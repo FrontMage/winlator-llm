@@ -54,12 +54,16 @@ public class ALSARequestHandler implements RequestHandler {
                 }
                 break;
             case RequestCodes.WRITE:
-                ByteBuffer buffer = ALSAClient.isUseShm() ? alsaClient.getSharedBuffer() : null;
-                if (buffer != null) {
-                    if (copySharedBuffer(alsaClient, requestLength, outputStream)) {
-                        ByteBuffer auxBuffer = alsaClient.getAuxBuffer();
-                        if (auxBuffer != null) alsaClient.writeDataToStream(auxBuffer);
-                        buffer.putInt(0, alsaClient.pointer());
+                if (ALSAClient.isUseShm()) {
+                    synchronized (alsaClient.getBufferLock()) {
+                        ByteBuffer buffer = alsaClient.getSharedBuffer();
+                        if (buffer != null) {
+                            if (copySharedBuffer(alsaClient, requestLength, outputStream)) {
+                                ByteBuffer auxBuffer = alsaClient.getAuxBuffer();
+                                if (auxBuffer != null) alsaClient.writeDataToStream(auxBuffer);
+                                buffer.putInt(0, alsaClient.pointer());
+                            }
+                        }
                     }
                 }
                 else {
@@ -98,26 +102,28 @@ public class ALSARequestHandler implements RequestHandler {
     }
 
     private boolean copySharedBuffer(ALSAClient alsaClient, int requestLength, XOutputStream outputStream) throws IOException {
-        ByteBuffer sharedBuffer = alsaClient.getSharedBuffer();
-        ByteBuffer auxBuffer = alsaClient.getAuxBuffer();
-        if (sharedBuffer == null || auxBuffer == null) {
-            if (ALSAClient.isDebugEnabled()) {
-                Log.w(TAG, "ALSA write skipped: sharedBuffer or auxBuffer is null");
+        synchronized (alsaClient.getBufferLock()) {
+            ByteBuffer sharedBuffer = alsaClient.getSharedBuffer();
+            ByteBuffer auxBuffer = alsaClient.getAuxBuffer();
+            if (sharedBuffer == null || auxBuffer == null) {
+                if (ALSAClient.isDebugEnabled()) {
+                    Log.w(TAG, "ALSA write skipped: sharedBuffer or auxBuffer is null");
+                }
+                return false;
             }
-            return false;
-        }
-        int maxShared = Math.max(0, sharedBuffer.capacity() - 4);
-        int maxAux = auxBuffer.capacity();
-        if (requestLength <= 0 || requestLength > maxShared || requestLength > maxAux) {
-            if (ALSAClient.isDebugEnabled()) {
-                Log.w(TAG, "ALSA write skipped: requestLength=" + requestLength
-                    + " maxShared=" + maxShared + " maxAux=" + maxAux);
+            int maxShared = Math.max(0, sharedBuffer.capacity() - 4);
+            int maxAux = auxBuffer.capacity();
+            if (requestLength <= 0 || requestLength > maxShared || requestLength > maxAux) {
+                if (ALSAClient.isDebugEnabled()) {
+                    Log.w(TAG, "ALSA write skipped: requestLength=" + requestLength
+                        + " maxShared=" + maxShared + " maxAux=" + maxAux);
+                }
+                return false;
             }
-            return false;
+            auxBuffer.position(0).limit(requestLength);
+            sharedBuffer.position(4).limit(requestLength + 4);
+            auxBuffer.put(sharedBuffer);
         }
-        auxBuffer.position(0).limit(requestLength);
-        sharedBuffer.position(4).limit(requestLength + 4);
-        auxBuffer.put(sharedBuffer);
 
         try (XStreamLock lock = outputStream.lock()) {
             outputStream.writeByte((byte)1);

@@ -17,6 +17,7 @@ public class ALSAClient {
     private static final String TAG = "WinlatorALSA";
     private static boolean debugEnabled = false;
     private static boolean useShm = true;
+    private final Object bufferLock = new Object();
 
     public enum DataType {
         U8(1), S16LE(2), S16BE(2), FLOATLE(4), FLOATBE(4);
@@ -94,21 +95,23 @@ public class ALSAClient {
     }
 
     public void release() {
-        if (sharedBuffer != null) {
-            SysVSharedMemory.unmapSHMSegment(sharedBuffer, sharedBuffer.capacity());
-            sharedBuffer = null;
-        }
+        synchronized (bufferLock) {
+            if (sharedBuffer != null) {
+                SysVSharedMemory.unmapSHMSegment(sharedBuffer, sharedBuffer.capacity());
+                sharedBuffer = null;
+            }
 
-        if (audioTrack != null) {
-            try {
-                audioTrack.pause();
-                audioTrack.flush();
-                audioTrack.release();
+            if (audioTrack != null) {
+                try {
+                    audioTrack.pause();
+                    audioTrack.flush();
+                    audioTrack.release();
+                }
+                catch (Exception e) {
+                    logDebug("release: " + e.getMessage());
+                }
+                audioTrack = null;
             }
-            catch (Exception e) {
-                logDebug("release: " + e.getMessage());
-            }
-            audioTrack = null;
         }
     }
 
@@ -252,14 +255,20 @@ public class ALSAClient {
     }
 
     public void setSharedBuffer(ByteBuffer sharedBuffer) {
-        if (sharedBuffer != null) {
-            auxBuffer = ByteBuffer.allocateDirect(getBufferSizeInBytes()).order(ByteOrder.LITTLE_ENDIAN);
-            this.sharedBuffer = sharedBuffer.order(ByteOrder.LITTLE_ENDIAN);
+        synchronized (bufferLock) {
+            if (sharedBuffer != null) {
+                auxBuffer = ByteBuffer.allocateDirect(getBufferSizeInBytes()).order(ByteOrder.LITTLE_ENDIAN);
+                this.sharedBuffer = sharedBuffer.order(ByteOrder.LITTLE_ENDIAN);
+            }
+            else {
+                auxBuffer = null;
+                this.sharedBuffer = null;
+            }
         }
-        else {
-            auxBuffer = null;
-            this.sharedBuffer = null;
-        }
+    }
+
+    public Object getBufferLock() {
+        return bufferLock;
     }
 
     private boolean isValidBufferSize() {
