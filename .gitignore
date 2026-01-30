@@ -10,6 +10,7 @@ local.properties
 # large archives kept out of git
 10.0/
 dxvk-*.tzst
+!app/src/main/assets/dxwrapper/dxvk-2.4.1.tzst
 app/src/main/assets/graphics_driver/turnip-25.1.0.tzst
 app/src/main/assets/graphics_driver/turnip-26.0.0.tzst
 app/src/main/assets/graphics_driver/vortek-2.0.tzst
