@@ -10,11 +10,22 @@ local.properties
 # large archives kept out of git
 10.0/
 dxvk-*.tzst
-!app/src/main/assets/dxwrapper/dxvk-2.4.1.tzst
+app/src/main/assets/imagefs.txz
+app/src/main/assets/imagefs_patches.tzst
+app/src/main/assets/container_pattern.tzst
+app/src/main/assets/wincomponents/direct3d.tzst
+app/src/main/assets/graphics_driver/zink-22.2.5.tzst
+app/src/main/assets/graphics_driver/virgl-23.1.9.tzst
+app/src/main/assets/graphics_driver/turnip-24.1.0.tzst
 app/src/main/assets/graphics_driver/turnip-25.1.0.tzst
 app/src/main/assets/graphics_driver/turnip-26.0.0.tzst
 app/src/main/assets/graphics_driver/vortek-2.0.tzst
+app/src/main/assets/box86_64/box64-0.3.6.tzst
+app/src/main/assets/box86_64/box64-0.4.0.tzst
+app/src/main/assets/dxwrapper/dxvk-2.4.1.tzst
+app/src/main/assets/dxwrapper/vkd3d-2.12.tzst
 app/src/main/assets/dxwrapper/vkd3d-2.13.tzst
+rootfs/archives/data.tar.xz
 
 # temp
 /tmp

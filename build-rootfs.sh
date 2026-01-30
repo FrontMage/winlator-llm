@@ -1,5 +1,20 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOTFS_ARCHIVES_DIR="$SCRIPT_DIR/rootfs/archives"
+FETCH_ASSETS_SCRIPT="$SCRIPT_DIR/scripts/fetch-large-assets.sh"
+
+ensure_rootfs_archives() {
+  if [[ -f "$ROOTFS_ARCHIVES_DIR/data.tar.xz" ]]; then
+    return 0
+  fi
+  if [[ -x "$FETCH_ASSETS_SCRIPT" ]]; then
+    echo "[build-rootfs] data.tar.xz not found. Fetching large assets..."
+    "$FETCH_ASSETS_SCRIPT"
+  fi
+  if [[ ! -f "$ROOTFS_ARCHIVES_DIR/data.tar.xz" ]]; then
+    echo "[build-rootfs] Missing $ROOTFS_ARCHIVES_DIR/data.tar.xz" >&2
+    exit 1
+  fi
+}
 
 patchelf_fix() {
   LD_RPATH=/data/data/com.winlator/files/rootfs/lib
@@ -187,6 +202,7 @@ if ! tar -I 'xz -T8' -cf /tmp/output/output-lite.tar.xz *; then
   exit 1
 fi
 cd /tmp
+ensure_rootfs_archives
 tar -xf "$ROOTFS_ARCHIVES_DIR/data.tar.xz" -C /data/data/com.winlator/files/rootfs/
 tar -xf "$ROOTFS_ARCHIVES_DIR/tzdata-2025b-1-aarch64.pkg.tar.xz" -C /data/data/com.winlator/files/rootfs/
 cd /data/data/com.winlator/files/rootfs/

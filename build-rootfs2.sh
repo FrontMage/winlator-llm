@@ -2,6 +2,21 @@
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOTFS_ARCHIVES_DIR="$SCRIPT_DIR/rootfs/archives"
+FETCH_ASSETS_SCRIPT="$SCRIPT_DIR/scripts/fetch-large-assets.sh"
+
+ensure_rootfs_archives() {
+    if [[ -f "$ROOTFS_ARCHIVES_DIR/data.tar.xz" ]]; then
+        return 0
+    fi
+    if [[ -x "$FETCH_ASSETS_SCRIPT" ]]; then
+        echo "[build-rootfs2] data.tar.xz not found. Fetching large assets..."
+        "$FETCH_ASSETS_SCRIPT"
+    fi
+    if [[ ! -f "$ROOTFS_ARCHIVES_DIR/data.tar.xz" ]]; then
+        echo "[build-rootfs2] Missing $ROOTFS_ARCHIVES_DIR/data.tar.xz" >&2
+        exit 1
+    fi
+}
 
 # 设置镜像源
 setup_mirrors() {
@@ -562,9 +577,8 @@ package_results() {
     # 添加附加数据并创建完整版
     echo "添加附加数据..."
     cd /tmp
-    if [[ -f "$ROOTFS_ARCHIVES_DIR/data.tar.xz" ]]; then
-        tar -xf "$ROOTFS_ARCHIVES_DIR/data.tar.xz" -C "$rootfs"
-    fi
+    ensure_rootfs_archives
+    tar -xf "$ROOTFS_ARCHIVES_DIR/data.tar.xz" -C "$rootfs"
     
     if ls "$ROOTFS_ARCHIVES_DIR"/tzdata-*.pkg.tar.xz 1> /dev/null 2>&1; then
         tar -xf "$ROOTFS_ARCHIVES_DIR"/tzdata-*.pkg.tar.xz -C "$rootfs"

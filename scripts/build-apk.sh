@@ -61,6 +61,9 @@ echo "[build-apk] Using JAVA_HOME=$JAVA_HOME"
 
 cd "$ROOT_DIR"
 
+echo "[build-apk] Ensuring large assets are available..."
+"$ROOT_DIR/scripts/fetch-large-assets.sh"
+
 echo "[build-apk] Running Gradle assembleDebug ..."
 ./gradlew :app:assembleDebug
 
