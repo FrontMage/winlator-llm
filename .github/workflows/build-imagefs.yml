@@ -7,6 +7,10 @@ on:
         description: 'URL to rootfs.tzst'
         required: false
         default: 'https://github.com/Waim908/rootfs-custom-winlator/releases/download/ori-b11.0/rootfs.tzst'
+      base_imagefs_tar_url:
+        description: 'Optional imagefs bundle (.tar.xz) to overlay /opt/wine'
+        required: false
+        default: 'https://github.com/FrontMage/winlator-llm/releases/download/imagefs-v1/imagefs-v1.tar.xz'
 
 jobs:
   build:
@@ -20,6 +24,7 @@ jobs:
       - name: Build imagefs
         env:
           ROOTFS_TZST_URL: ${{ inputs.rootfs_tzst_url }}
+          BASE_IMAGEFS_TAR_URL: ${{ inputs.base_imagefs_tar_url }}
           OUT_DIR: ${{ github.workspace }}/dist
         run: |
           scripts/build-imagefs.sh

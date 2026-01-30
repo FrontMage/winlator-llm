@@ -5,22 +5,31 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="${OUT_DIR:-$ROOT_DIR/dist}"
 TMP_DIR="${TMP_DIR:-/tmp/winlator-imagefs}"
 ROOTFS_TZST_URL="${ROOTFS_TZST_URL:-https://github.com/Waim908/rootfs-custom-winlator/releases/download/ori-b11.0/rootfs.tzst}"
+BASE_IMAGEFS_TAR_URL="${BASE_IMAGEFS_TAR_URL:-}"
 
 mkdir -p "$OUT_DIR" "$TMP_DIR"
 
 ROOTFS_TZST_PATH="$TMP_DIR/rootfs.tzst"
 ROOTFS_DIR="$TMP_DIR/rootfs"
 
+_download() {
+  local url="$1"
+  local dest="$2"
+  if command -v curl >/dev/null 2>&1; then
+    curl -L --fail --retry 3 -o "$dest" "$url"
+    return 0
+  fi
+  if command -v wget >/dev/null 2>&1; then
+    wget -O "$dest" "$url"
+    return 0
+  fi
+  echo "[build-imagefs] Neither curl nor wget found" >&2
+  exit 1
+}
+
 if [[ ! -f "$ROOTFS_TZST_PATH" ]]; then
   echo "[build-imagefs] Downloading rootfs.tzst..."
-  if command -v curl >/dev/null 2>&1; then
-    curl -L --fail --retry 3 -o "$ROOTFS_TZST_PATH" "$ROOTFS_TZST_URL"
-  elif command -v wget >/dev/null 2>&1; then
-    wget -O "$ROOTFS_TZST_PATH" "$ROOTFS_TZST_URL"
-  else
-    echo "[build-imagefs] Neither curl nor wget found" >&2
-    exit 1
-  fi
+  _download "$ROOTFS_TZST_URL" "$ROOTFS_TZST_PATH"
 fi
 
 rm -rf "$ROOTFS_DIR"
@@ -39,6 +48,32 @@ else
   fi
 fi
 
+# Optionally overlay known-good wine from a base imagefs bundle
+if [[ -n "$BASE_IMAGEFS_TAR_URL" ]]; then
+  echo "[build-imagefs] Downloading base imagefs bundle..."
+  BASE_TAR="$TMP_DIR/base-imagefs.tar.xz"
+  BASE_EXTRACT_DIR="$TMP_DIR/base-imagefs"
+  BASE_TXZ_DIR="$TMP_DIR/base-imagefs-txz"
+  BASE_ROOTFS_DIR="$TMP_DIR/base-imagefs-root"
+  _download "$BASE_IMAGEFS_TAR_URL" "$BASE_TAR"
+  rm -rf "$BASE_EXTRACT_DIR" "$BASE_TXZ_DIR" "$BASE_ROOTFS_DIR"
+  mkdir -p "$BASE_EXTRACT_DIR" "$BASE_TXZ_DIR" "$BASE_ROOTFS_DIR"
+  tar -xJf "$BASE_TAR" -C "$BASE_EXTRACT_DIR" app/src/main/assets/imagefs.txz
+  BASE_IMAGEFS_TXZ="$BASE_EXTRACT_DIR/app/src/main/assets/imagefs.txz"
+  if [[ ! -f "$BASE_IMAGEFS_TXZ" ]]; then
+    echo "[build-imagefs] base imagefs.txz missing inside bundle" >&2
+    exit 1
+  fi
+  tar -xJf "$BASE_IMAGEFS_TXZ" -C "$BASE_ROOTFS_DIR" ./opt/wine
+  if [[ -d "$BASE_ROOTFS_DIR/opt/wine" ]]; then
+    echo "[build-imagefs] Overlaying /opt/wine from base imagefs"
+    rsync -a "$BASE_ROOTFS_DIR/opt/wine/" "$ROOTFS_DIR/opt/wine/"
+  else
+    echo "[build-imagefs] base imagefs missing /opt/wine" >&2
+    exit 1
+  fi
+fi
+
 OVERLAY_DIR="$ROOT_DIR/rootfs/overlays/imagefs"
 if [[ -d "$OVERLAY_DIR" ]]; then
   echo "[build-imagefs] Applying overlay: $OVERLAY_DIR"
@@ -49,7 +84,7 @@ IMAGEFS_PATH="$OUT_DIR/imagefs.txz"
 
 echo "[build-imagefs] Packing imagefs.txz..."
 mkdir -p "$(dirname "$IMAGEFS_PATH")"
-( 
+(
   cd "$ROOTFS_DIR"
   tar -I 'xz -T8' -cf "$IMAGEFS_PATH" .
 )
