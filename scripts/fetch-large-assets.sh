@@ -4,10 +4,6 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 ASSET_REPO="${WINLATOR_ASSET_REPO:-FrontMage/winlator-llm}"
-ASSET_TAG="${WINLATOR_ASSET_TAG:-assets-v1}"
-ASSET_NAME="${WINLATOR_ASSET_NAME:-winlator-assets-v1.tar.xz}"
-ASSET_URL="${WINLATOR_ASSET_URL:-https://github.com/${ASSET_REPO}/releases/download/${ASSET_TAG}/${ASSET_NAME}}"
-ASSET_TMP="${WINLATOR_ASSET_TMP:-/tmp/${ASSET_NAME}}"
 
 REQUIRED_FILES=(
   "app/src/main/assets/imagefs.txz"
@@ -24,36 +20,83 @@ REQUIRED_FILES=(
   "rootfs/archives/data.tar.xz"
 )
 
-missing=()
+ASSET_GROUPS=(
+  "imagefs-v1|imagefs-v1.tar.xz|app/src/main/assets/imagefs.txz app/src/main/assets/imagefs_patches.tzst"
+  "container-pattern-v1|container-pattern-v1.tar.xz|app/src/main/assets/container_pattern.tzst"
+  "wincomponents-v1|wincomponents-v1.tar.xz|app/src/main/assets/wincomponents/direct3d.tzst"
+  "drivers-v1|drivers-v1.tar.xz|app/src/main/assets/graphics_driver/zink-22.2.5.tzst app/src/main/assets/graphics_driver/virgl-23.1.9.tzst app/src/main/assets/graphics_driver/turnip-24.1.0.tzst"
+  "box64-v1|box64-v1.tar.xz|app/src/main/assets/box86_64/box64-0.3.6.tzst app/src/main/assets/box86_64/box64-0.4.0.tzst"
+  "dx-wrapper-v1|dx-wrapper-v1.tar.xz|app/src/main/assets/dxwrapper/dxvk-2.4.1.tzst app/src/main/assets/dxwrapper/vkd3d-2.12.tzst"
+  "rootfs-archives-v1|rootfs-archives-v1.tar.xz|rootfs/archives/data.tar.xz"
+)
+
+download_asset() {
+  local tag="$1"
+  local name="$2"
+  local dest="$3"
+
+  if command -v gh >/dev/null 2>&1; then
+    gh release download "$tag" -R "$ASSET_REPO" -p "$name" -O "$dest"
+    return 0
+  fi
+
+  local url="https://github.com/${ASSET_REPO}/releases/download/${tag}/${name}"
+  if command -v curl >/dev/null 2>&1; then
+    if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+      curl -L --fail -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/octet-stream" -o "$dest" "$url"
+    else
+      curl -L --fail -o "$dest" "$url"
+    fi
+    return 0
+  fi
+
+  if command -v wget >/dev/null 2>&1; then
+    if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+      wget --header="Authorization: Bearer ${GITHUB_TOKEN}" --header="Accept: application/octet-stream" -O "$dest" "$url"
+    else
+      wget -O "$dest" "$url"
+    fi
+    return 0
+  fi
+
+  echo "[fetch-large-assets] Neither gh, curl nor wget is available." >&2
+  exit 1
+}
+
+missing_any=0
 for rel_path in "${REQUIRED_FILES[@]}"; do
   if [[ ! -f "$ROOT_DIR/$rel_path" ]]; then
-    missing+=("$rel_path")
+    missing_any=1
+    break
   fi
 done
 
-if [[ "${#missing[@]}" -eq 0 ]]; then
+if [[ "$missing_any" -eq 0 ]]; then
   echo "[fetch-large-assets] All required assets are present."
   exit 0
 fi
 
-echo "[fetch-large-assets] Missing assets:"
-printf '  - %s\n' "${missing[@]}"
-echo "[fetch-large-assets] Downloading asset bundle:"
-echo "  $ASSET_URL"
+echo "[fetch-large-assets] Resolving missing assets from release bundles..."
 
-mkdir -p "$(dirname "$ASSET_TMP")"
+for group in "${ASSET_GROUPS[@]}"; do
+  IFS='|' read -r tag name files <<< "$group"
+  needs_download=0
+  for rel_path in $files; do
+    if [[ ! -f "$ROOT_DIR/$rel_path" ]]; then
+      needs_download=1
+      break
+    fi
+  done
+  if [[ "$needs_download" -eq 0 ]]; then
+    continue
+  fi
 
-if command -v curl >/dev/null 2>&1; then
-  curl -L --fail -o "$ASSET_TMP" "$ASSET_URL"
-elif command -v wget >/dev/null 2>&1; then
-  wget -O "$ASSET_TMP" "$ASSET_URL"
-else
-  echo "[fetch-large-assets] Neither curl nor wget is available." >&2
-  exit 1
-fi
-
-echo "[fetch-large-assets] Extracting $ASSET_TMP into repo root..."
-tar -xJf "$ASSET_TMP" -C "$ROOT_DIR"
+  asset_tmp="/tmp/${name}"
+  echo "[fetch-large-assets] Downloading $name from $ASSET_REPO:$tag ..."
+  download_asset "$tag" "$name" "$asset_tmp"
+  echo "[fetch-large-assets] Extracting $name ..."
+  tar -xJf "$asset_tmp" -C "$ROOT_DIR"
+done
 
 missing_after=()
 for rel_path in "${REQUIRED_FILES[@]}"; do
@@ -65,6 +108,7 @@ done
 if [[ "${#missing_after[@]}" -ne 0 ]]; then
   echo "[fetch-large-assets] Extraction completed, but some files are still missing:" >&2
   printf '  - %s\n' "${missing_after[@]}" >&2
+  echo "[fetch-large-assets] If repo is private, ensure gh auth or GITHUB_TOKEN is available." >&2
   exit 1
 fi
 
