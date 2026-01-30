@@ -1,5 +1,8 @@
 #!/bin/bash
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOTFS_ARCHIVES_DIR="$SCRIPT_DIR/rootfs/archives"
+
 # 设置镜像源
 setup_mirrors() {
     echo "设置 Arch Linux ARM 镜像源..."
@@ -559,12 +562,12 @@ package_results() {
     # 添加附加数据并创建完整版
     echo "添加附加数据..."
     cd /tmp
-    if [[ -f "data.tar.xz" ]]; then
-        tar -xf data.tar.xz -C "$rootfs"
+    if [[ -f "$ROOTFS_ARCHIVES_DIR/data.tar.xz" ]]; then
+        tar -xf "$ROOTFS_ARCHIVES_DIR/data.tar.xz" -C "$rootfs"
     fi
     
-    if ls tzdata-*.pkg.tar.xz 1> /dev/null 2>&1; then
-        tar -xf tzdata-*.pkg.tar.xz -C "$rootfs"
+    if ls "$ROOTFS_ARCHIVES_DIR"/tzdata-*.pkg.tar.xz 1> /dev/null 2>&1; then
+        tar -xf "$ROOTFS_ARCHIVES_DIR"/tzdata-*.pkg.tar.xz -C "$rootfs"
     fi
     
     # 复制字体和其他资源

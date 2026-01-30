@@ -1,5 +1,8 @@
 #!/bin/bash
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOTFS_ARCHIVES_DIR="$SCRIPT_DIR/rootfs/archives"
+
 patchelf_fix() {
 LD_RPATH=/data/data/com.winlator/files/rootfs/lib
 LD_FILE=$LD_RPATH/ld-linux-aarch64.so.1
@@ -188,8 +191,8 @@ fi
 
 # Add additional data for full package
 cd /tmp
-tar -xf data.tar.xz -C /data/data/com.winlator/files/rootfs/
-tar -xf tzdata-2025b-1-aarch64.pkg.tar.xz -C /data/data/com.winlator/files/rootfs/
+tar -xf "$ROOTFS_ARCHIVES_DIR/data.tar.xz" -C /data/data/com.winlator/files/rootfs/
+tar -xf "$ROOTFS_ARCHIVES_DIR/tzdata-2025b-1-aarch64.pkg.tar.xz" -C /data/data/com.winlator/files/rootfs/
 
 cd /data/data/com.winlator/files/rootfs/
 create_ver_txt
