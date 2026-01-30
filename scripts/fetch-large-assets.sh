@@ -35,6 +35,11 @@ download_asset() {
   local name="$2"
   local dest="$3"
 
+  if [[ -f "$dest" ]]; then
+    echo "[fetch-large-assets] Using cached bundle: $dest"
+    return 0
+  fi
+
   if command -v gh >/dev/null 2>&1; then
     gh release download "$tag" -R "$ASSET_REPO" -p "$name" -O "$dest"
     return 0
