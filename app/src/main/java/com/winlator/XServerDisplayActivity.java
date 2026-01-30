@@ -478,10 +478,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
         if (audioDriver.equals("alsa")) {
             ALSAClient.setDebug(preferences.getBoolean("enable_alsa_debug", false));
-            ALSAClient.setUseShm(true);
+            ALSAClient.setUseShm(false);
             // Use guest-visible socket path for ALSA client (the server still binds on host rootfs).
             envVars.put("ANDROID_ALSA_SERVER", UnixSocketConfig.ALSA_SERVER_PATH);
-            envVars.put("ANDROID_ASERVER_USE_SHM", "true");
+            envVars.put("ANDROID_ASERVER_USE_SHM", "false");
             environment.addComponent(new ALSAServerComponent(
                 UnixSocketConfig.createSocket(rootPath, UnixSocketConfig.ALSA_SERVER_PATH),
                 ALSAClient.Options.fromKeyValueSet(audioDriverConfig)
