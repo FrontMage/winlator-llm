@@ -1,0 +1,28 @@
+# local build/cache
+.gradle/
+build/
+app/.cxx/
+app/build/
+
+# local configs
+local.properties
+
+# large archives kept out of git
+10.0/
+dxvk-*.tzst
+app/src/main/assets/graphics_driver/turnip-25.1.0.tzst
+app/src/main/assets/graphics_driver/turnip-26.0.0.tzst
+app/src/main/assets/graphics_driver/vortek-2.0.tzst
+app/src/main/assets/dxwrapper/vkd3d-2.13.tzst
+
+# temp
+/tmp
+/tmp/
+tmp/
+
+# tools
+.codex/
+codex/
+
+# macOS
+.DS_Store
