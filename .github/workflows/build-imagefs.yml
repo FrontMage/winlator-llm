@@ -1,0 +1,30 @@
+name: build-imagefs
+
+on:
+  workflow_dispatch:
+    inputs:
+      rootfs_tzst_url:
+        description: 'URL to rootfs.tzst'
+        required: false
+        default: 'https://github.com/Waim908/rootfs-custom-winlator/releases/download/ori-b11.0/rootfs.tzst'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zstd xz-utils rsync
+      - name: Build imagefs
+        env:
+          ROOTFS_TZST_URL: ${{ inputs.rootfs_tzst_url }}
+          OUT_DIR: ${{ github.workspace }}/dist
+        run: |
+          scripts/build-imagefs.sh
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: imagefs
+          path: dist/imagefs.txz

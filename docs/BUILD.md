@@ -46,6 +46,21 @@ scripts/build-apk.sh
 
 运行时会在容器启动阶段自动把这些工具覆盖到 rootfs 中，并记录 `rootfsUtilsPatchVersion`，避免每次都重复覆盖。
 
+## 通过 GitHub Actions 构建 imagefs.txz
+
+`imagefs` 是 Arch Linux ARM 的 RootFS 打包产物（`tar.xz`）。在 macOS 上不方便构建时，可以用仓库内的 CI 工作流产出并下载：
+
+1. 触发 `build-imagefs` 工作流（可选指定 `rootfs.tzst` URL）。
+2. 等待任务完成后，从 Actions Artifact 下载 `imagefs.txz`。
+
+本地也可以直接运行脚本（Linux 环境）：
+
+```bash
+scripts/build-imagefs.sh
+```
+
+脚本默认从 `rootfs-custom-winlator` 的 release 下载 `rootfs.tzst`，再打包生成 `dist/imagefs.txz`。
+
 ## 遇到问题时的修复开关
 
 如果你在 macOS Apple Silicon（aarch64）上遇到如下错误：
