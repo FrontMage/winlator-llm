@@ -213,20 +213,22 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         String currentBox64Version = preferences.getString("current_box64_version", "");
         File rootDir = imageFs.getRootDir();
 
+        File box86File = new File(rootDir, "/usr/local/bin/box86");
+        File box64File = new File(rootDir, "/usr/local/bin/box64");
+
         if (wow64Mode) {
-            File box86File = new File(rootDir, "/usr/local/bin/box86");
             if (box86File.isFile()) {
                 box86File.delete();
                 preferences.edit().putString("current_box86_version", "").apply();
             }
         }
-        else if (!box86Version.equals(currentBox86Version)) {
-            TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, context, "box86_64/box86-"+box86Version+".tzst", rootDir);
+        else if (!box86File.isFile() || !box86Version.equals(currentBox86Version)) {
+            TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, context, "box86_64/box86-" + box86Version + ".tzst", rootDir);
             preferences.edit().putString("current_box86_version", box86Version).apply();
         }
 
-        if (!box64Version.equals(currentBox64Version)) {
-            TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, context, "box86_64/box64-"+box64Version+".tzst", rootDir);
+        if (!box64File.isFile() || !box64Version.equals(currentBox64Version)) {
+            TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, context, "box86_64/box64-" + box64Version + ".tzst", rootDir);
             preferences.edit().putString("current_box64_version", box64Version).apply();
         }
     }
