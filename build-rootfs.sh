@@ -212,9 +212,15 @@ create_ver_txt
 if ! tar -I 'xz -T8' -cf /tmp/output/output-full.tar.xz *; then
   exit 1
 fi
-rm -rf /data/data/com.winlator/files/rootfs/*/
-tar -xf rootfs.tzst -C /data/data/com.winlator/files/rootfs/
-tar -xf /tmp/output/output-full.xz -C /data/data/com.winlator/files/rootfs/
+rm -rf /data/data/com.winlator/files/rootfs/*
+if ! tar -xf /tmp/rootfs.tzst -C /data/data/com.winlator/files/rootfs/; then
+  echo "Failed to extract /tmp/rootfs.tzst" >&2
+  exit 1
+fi
+if ! tar -xf /tmp/output/output-full.tar.xz -C /data/data/com.winlator/files/rootfs/; then
+  echo "Failed to extract /tmp/output/output-full.tar.xz" >&2
+  exit 1
+fi
 cd /data/data/com.winlator/files/rootfs/
 create_ver_txt
 if ! tar -I 'zstd -T8' -cf /tmp/output/rootfs.tzst *; then
