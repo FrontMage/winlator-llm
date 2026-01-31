@@ -24,7 +24,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y zstd xz-utils rsync
+          sudo apt-get install -y zstd xz-utils rsync libarchive-tools
       - name: Build imagefs
         env:
           ROOTFS_TZST_URL: ${{ inputs.rootfs_tzst_url }}
