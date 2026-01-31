@@ -91,9 +91,9 @@ if [[ "$ENABLE_AUTH_DEPS" == "1" ]]; then
   PKG_TMP="$TMP_DIR/pkgs"
   mkdir -p "$PKG_TMP"
   REPO_BASES=(
-    "https://mirror.archlinuxarm.org/aarch64/extra"
-    "https://mirror.archlinuxarm.org/aarch64/community"
-    "https://mirror.archlinuxarm.org/aarch64/core"
+    "http://mirror.archlinuxarm.org/aarch64/extra"
+    "http://mirror.archlinuxarm.org/aarch64/community"
+    "http://mirror.archlinuxarm.org/aarch64/core"
   )
   PKGS=(
     "samba"
@@ -115,6 +115,15 @@ if [[ "$ENABLE_AUTH_DEPS" == "1" ]]; then
     fi
     extract_pkg "$pkg_path" "$ROOTFS_DIR"
   done
+
+  if [[ ! -x "$ROOTFS_DIR/usr/bin/ntlm_auth" ]]; then
+    echo "[build-imagefs] ERROR: ntlm_auth missing after package extraction" >&2
+    exit 1
+  fi
+  if ! ls "$ROOTFS_DIR/usr/lib/libkrb5.so"* >/dev/null 2>&1; then
+    echo "[build-imagefs] ERROR: libkrb5 missing after package extraction" >&2
+    exit 1
+  fi
 fi
 
 # Optionally overlay known-good wine from a base imagefs bundle
