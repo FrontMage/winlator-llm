@@ -35,8 +35,8 @@ jobs:
           sparse-checkout: |
             arch-bootstrap.sh
             build-rootfs.sh
-            data.tar.xz
-            tzdata-2025b-1-aarch64.pkg.tar.xz
+            rootfs/archives/
+            scripts/fetch-large-assets.sh
 
       - name: Setup chroot environment
         run: |
@@ -95,10 +95,15 @@ jobs:
 
       - name: Prepare build files in chroot
         run: |
+          # Ensure rootfs archives are present
+          chmod +x scripts/fetch-large-assets.sh
+          scripts/fetch-large-assets.sh
+
           # Copy build script and data files
           sudo cp build-rootfs.sh /tmp/archlinux/tmp/
-          sudo cp data.tar.xz /tmp/archlinux/tmp/
-          sudo cp tzdata-2025b-1-aarch64.pkg.tar.xz /tmp/archlinux/tmp/
+          sudo mkdir -p /tmp/archlinux/tmp/rootfs/archives
+          sudo cp rootfs/archives/data.tar.xz /tmp/archlinux/tmp/rootfs/archives/
+          sudo cp rootfs/archives/tzdata-2025b-1-aarch64.pkg.tar.xz /tmp/archlinux/tmp/rootfs/archives/
           
           # Create init script with environment variables
           cat > /tmp/init.sh << EOF
