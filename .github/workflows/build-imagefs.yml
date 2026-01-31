@@ -11,6 +11,10 @@ on:
         description: 'Optional imagefs bundle (.tar.xz) to overlay /opt/wine'
         required: false
         default: 'https://github.com/FrontMage/winlator-llm/releases/download/imagefs-v1/imagefs-v1.tar.xz'
+      enable_auth_deps:
+        description: 'Install NTLM/Kerberos deps into imagefs (1/0)'
+        required: false
+        default: '1'
 
 jobs:
   build:
@@ -25,6 +29,7 @@ jobs:
         env:
           ROOTFS_TZST_URL: ${{ inputs.rootfs_tzst_url }}
           BASE_IMAGEFS_TAR_URL: ${{ inputs.base_imagefs_tar_url }}
+          ENABLE_AUTH_DEPS: ${{ inputs.enable_auth_deps }}
           OUT_DIR: ${{ github.workspace }}/dist
         run: |
           scripts/build-imagefs.sh
