@@ -127,8 +127,8 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         envVars.put("DISPLAY", ":0");
         envVars.put("PATH", imageFs.getWinePath()+"/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin");
         String defaultLdLibraryPath = "/usr/lib:/usr/lib/aarch64-linux-gnu:/usr/lib/arm-linux-gnueabihf";
-        String termuxLdLibraryPath = "/data/data/com.termux/files/usr/lib:/data/data/com.termux/files/usr/lib/samba";
-        envVars.put("LD_LIBRARY_PATH", defaultLdLibraryPath + ":" + termuxLdLibraryPath);
+        String sambaLdLibraryPath = "/usr/lib/samba:/usr/lib/samba/private";
+        envVars.put("LD_LIBRARY_PATH", sambaLdLibraryPath + ":" + defaultLdLibraryPath);
         envVars.put("ANDROID_SYSVSHM_SERVER", UnixSocketConfig.SYSVSHM_SERVER_PATH);
 
         if ((new File(imageFs.getLib64Dir(), "libandroid-sysvshm.so")).exists() ||
@@ -136,11 +136,11 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         if (this.envVars != null) envVars.putAll(this.envVars);
 
         String currentLdLibraryPath = envVars.get("LD_LIBRARY_PATH");
-        if (!currentLdLibraryPath.contains("/data/data/com.termux/files/usr/lib")) {
+        if (!currentLdLibraryPath.contains("/usr/lib/samba")) {
             if (currentLdLibraryPath.isEmpty()) {
-                envVars.put("LD_LIBRARY_PATH", defaultLdLibraryPath + ":" + termuxLdLibraryPath);
+                envVars.put("LD_LIBRARY_PATH", sambaLdLibraryPath + ":" + defaultLdLibraryPath);
             } else {
-                envVars.put("LD_LIBRARY_PATH", currentLdLibraryPath + ":" + termuxLdLibraryPath);
+                envVars.put("LD_LIBRARY_PATH", sambaLdLibraryPath + ":" + currentLdLibraryPath);
             }
         }
 

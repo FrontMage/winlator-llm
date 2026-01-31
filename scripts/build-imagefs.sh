@@ -6,7 +6,7 @@ OUT_DIR="${OUT_DIR:-$ROOT_DIR/dist}"
 TMP_DIR="${TMP_DIR:-/tmp/winlator-imagefs}"
 ROOTFS_TZST_URL="${ROOTFS_TZST_URL:-https://github.com/Waim908/rootfs-custom-winlator/releases/download/ori-b11.0/rootfs.tzst}"
 BASE_IMAGEFS_TAR_URL="${BASE_IMAGEFS_TAR_URL:-}"
-ENABLE_AUTH_DEPS="${ENABLE_AUTH_DEPS:-1}"
+ENABLE_AUTH_DEPS="${ENABLE_AUTH_DEPS:-0}"
 TERMUX_SAMBA_DEB_URL="${TERMUX_SAMBA_DEB_URL:-https://packages.termux.org/apt/termux-main/pool/main/s/samba/samba_4.16.11-6_aarch64.deb}"
 TERMUX_LIBTALLOC_DEB_URL="${TERMUX_LIBTALLOC_DEB_URL:-https://packages.termux.org/apt/termux-main/pool/main/libt/libtalloc/libtalloc_2.4.3_aarch64.deb}"
 

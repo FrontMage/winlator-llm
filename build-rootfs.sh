@@ -57,6 +57,8 @@ else
   echo "xz=> $xzVer"
 fi
 pacman -R --noconfirm libvorbis flac lame
+pacman -Sy --noconfirm
+pacman -S --noconfirm --needed samba
 mkdir -p /data/data/com.winlator/files/rootfs/
 cd /tmp
 if ! wget https://github.com/Waim908/rootfs-custom-winlator/releases/download/ori-b11.0/rootfs.tzst; then

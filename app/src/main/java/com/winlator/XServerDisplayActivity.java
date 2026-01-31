@@ -440,6 +440,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         envVars.put("WINEPREFIX", ImageFs.WINEPREFIX);
 
         boolean enableWineDebug = preferences.getBoolean("enable_wine_debug", false);
+        boolean enableBox86_64Logs = preferences.getBoolean("enable_box86_64_logs", false);
         String wineDebugChannels = preferences.getString("wine_debug_channels", SettingsFragment.DEFAULT_WINE_DEBUG_CHANNELS);
         envVars.put("WINEDEBUG", enableWineDebug && !wineDebugChannels.isEmpty() ? "+"+wineDebugChannels.replace(",", ",+") : "-all");
 

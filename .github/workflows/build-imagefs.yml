@@ -12,9 +12,9 @@ on:
         required: false
         default: 'https://github.com/FrontMage/winlator-llm/releases/download/imagefs-v1/imagefs-v1.tar.xz'
       enable_auth_deps:
-        description: 'Install NTLM/Kerberos deps into imagefs (1/0)'
+        description: 'Install NTLM/Kerberos deps from Termux into imagefs (1/0)'
         required: false
-        default: '1'
+        default: '0'
 
 jobs:
   build:

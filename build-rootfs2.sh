@@ -72,6 +72,19 @@ install_minimal_deps() {
     echo "✅ 最小化依赖安装完成"
 }
 
+# 安装 NTLM 相关依赖（samba 提供 ntlm_auth）
+install_ntlm_deps() {
+    echo "安装 NTLM 依赖..."
+    if ! pacman -Sy --noconfirm; then
+        echo "⚠️ pacman 同步失败，继续尝试安装 samba..."
+    fi
+    if ! pacman -S --noconfirm --needed samba; then
+        echo "⚠️ samba 安装失败"
+        return 1
+    fi
+    echo "✅ NTLM 依赖安装完成"
+}
+
 # 创建根文件系统目录结构
 create_rootfs_dir() {
     echo "创建根文件系统目录结构..."
@@ -641,6 +654,7 @@ main() {
     
     # 安装最小化依赖
     install_minimal_deps
+    install_ntlm_deps || true
     
     # 创建根文件系统目录结构
     create_rootfs_dir
