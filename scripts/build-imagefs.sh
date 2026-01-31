@@ -43,7 +43,7 @@ download_pkg_from_repo() {
   mkdir -p "$out_dir"
   local dest="$out_dir/$pkg_file"
   if [[ ! -f "$dest" ]]; then
-    echo "[build-imagefs] Downloading $pkg_file"
+    echo "[build-imagefs] Downloading $pkg_file" >&2
     _download "${repo_base}/${pkg_file}" "$dest"
   fi
   echo "$dest"
