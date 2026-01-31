@@ -98,9 +98,6 @@ if [[ "$ENABLE_AUTH_DEPS" == "1" ]]; then
   PKGS=(
     "samba"
     "libwbclient"
-    "krb5"
-    "cyrus-sasl"
-    "libldap"
   )
   for pkg in "${PKGS[@]}"; do
     pkg_path=""
@@ -118,10 +115,6 @@ if [[ "$ENABLE_AUTH_DEPS" == "1" ]]; then
 
   if [[ ! -x "$ROOTFS_DIR/usr/bin/ntlm_auth" ]]; then
     echo "[build-imagefs] ERROR: ntlm_auth missing after package extraction" >&2
-    exit 1
-  fi
-  if ! ls "$ROOTFS_DIR/usr/lib/libkrb5.so"* >/dev/null 2>&1; then
-    echo "[build-imagefs] ERROR: libkrb5 missing after package extraction" >&2
     exit 1
   fi
 fi
