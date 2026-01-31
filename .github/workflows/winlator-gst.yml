@@ -94,6 +94,8 @@ jobs:
           sudo rm /tmp/archlinux/install-deps.sh
 
       - name: Prepare build files in chroot
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           # Ensure rootfs archives are present
           chmod +x scripts/fetch-large-assets.sh
