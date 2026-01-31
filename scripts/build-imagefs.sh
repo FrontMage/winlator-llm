@@ -7,6 +7,8 @@ TMP_DIR="${TMP_DIR:-/tmp/winlator-imagefs}"
 ROOTFS_TZST_URL="${ROOTFS_TZST_URL:-https://github.com/Waim908/rootfs-custom-winlator/releases/download/ori-b11.0/rootfs.tzst}"
 BASE_IMAGEFS_TAR_URL="${BASE_IMAGEFS_TAR_URL:-}"
 ENABLE_AUTH_DEPS="${ENABLE_AUTH_DEPS:-1}"
+TERMUX_SAMBA_DEB_URL="${TERMUX_SAMBA_DEB_URL:-https://packages.termux.org/apt/termux-main/pool/main/s/samba/samba_4.16.11-6_aarch64.deb}"
+TERMUX_LIBTALLOC_DEB_URL="${TERMUX_LIBTALLOC_DEB_URL:-https://packages.termux.org/apt/termux-main/pool/main/libt/libtalloc/libtalloc_2.4.3_aarch64.deb}"
 
 mkdir -p "$OUT_DIR" "$TMP_DIR"
 
@@ -28,41 +30,20 @@ _download() {
   exit 1
 }
 
-download_pkg_from_repo() {
-  local repo_base="$1" pkg_prefix="$2" out_dir="$3"
-  local listing
-  listing=$(curl -fsSL "$repo_base" || true)
-  if [[ -z "$listing" ]]; then
-    return 1
-  fi
-  local pkg_file
-  pkg_file=$(echo "$listing" | grep -Eo "${pkg_prefix}-[0-9][^\"']*\.pkg\.tar\.(xz|zst)" | sort -V | tail -n 1)
-  if [[ -z "$pkg_file" ]]; then
-    return 1
-  fi
-  mkdir -p "$out_dir"
-  local dest="$out_dir/$pkg_file"
-  if [[ ! -f "$dest" ]]; then
-    echo "[build-imagefs] Downloading $pkg_file" >&2
-    _download "${repo_base}/${pkg_file}" "$dest"
-  fi
-  echo "$dest"
-}
-
-extract_pkg() {
-  local pkg_path="$1" dest_dir="$2"
-  if [[ "$pkg_path" == *.pkg.tar.zst ]]; then
-    if tar --zstd -tf "$pkg_path" >/dev/null 2>&1; then
-      tar --zstd -xf "$pkg_path" -C "$dest_dir"
-    elif command -v zstd >/dev/null 2>&1; then
-      zstd -dc "$pkg_path" | tar -xf - -C "$dest_dir"
-    else
-      echo "[build-imagefs] zstd not available to extract $pkg_path" >&2
-      exit 1
-    fi
+extract_deb() {
+  local deb_path="$1" dest_dir="$2" work_dir="$3"
+  mkdir -p "$work_dir"
+  if command -v bsdtar >/dev/null 2>&1; then
+    (cd "$work_dir" && bsdtar -xf "$deb_path")
   else
-    tar -xf "$pkg_path" -C "$dest_dir"
+    echo "[build-imagefs] bsdtar not found for .deb extraction" >&2
+    exit 1
   fi
+  if [[ ! -f "$work_dir/data.tar.xz" ]]; then
+    echo "[build-imagefs] data.tar.xz missing in $deb_path" >&2
+    exit 1
+  fi
+  tar -xf "$work_dir/data.tar.xz" -C "$dest_dir"
 }
 
 if [[ ! -f "$ROOTFS_TZST_PATH" ]]; then
@@ -87,36 +68,36 @@ else
 fi
 
 if [[ "$ENABLE_AUTH_DEPS" == "1" ]]; then
-  echo "[build-imagefs] Ensuring NTLM/Kerberos dependencies..."
-  PKG_TMP="$TMP_DIR/pkgs"
-  mkdir -p "$PKG_TMP"
-  REPO_BASES=(
-    "http://mirror.archlinuxarm.org/aarch64/extra"
-    "http://mirror.archlinuxarm.org/aarch64/community"
-    "http://mirror.archlinuxarm.org/aarch64/core"
-  )
-  PKGS=(
-    "samba"
-    "libwbclient"
-  )
-  for pkg in "${PKGS[@]}"; do
-    pkg_path=""
-    for repo in "${REPO_BASES[@]}"; do
-      if pkg_path=$(download_pkg_from_repo "$repo" "$pkg" "$PKG_TMP"); then
-        break
-      fi
-    done
-    if [[ -z "$pkg_path" ]]; then
-      echo "[build-imagefs] Warning: package $pkg not found in repos" >&2
-      continue
-    fi
-    extract_pkg "$pkg_path" "$ROOTFS_DIR"
-  done
+  echo "[build-imagefs] Installing ntlm_auth from Termux packages..."
+  TERMUX_TMP="$TMP_DIR/termux"
+  TERMUX_ROOT="$TERMUX_TMP/root"
+  mkdir -p "$TERMUX_ROOT"
 
-  if [[ ! -x "$ROOTFS_DIR/usr/bin/ntlm_auth" ]]; then
-    echo "[build-imagefs] ERROR: ntlm_auth missing after package extraction" >&2
+  SAMBA_DEB="$TERMUX_TMP/samba.deb"
+  LIBTALLOC_DEB="$TERMUX_TMP/libtalloc.deb"
+  _download "$TERMUX_SAMBA_DEB_URL" "$SAMBA_DEB"
+  _download "$TERMUX_LIBTALLOC_DEB_URL" "$LIBTALLOC_DEB"
+
+  extract_deb "$SAMBA_DEB" "$TERMUX_ROOT" "$TERMUX_TMP/samba"
+  extract_deb "$LIBTALLOC_DEB" "$TERMUX_ROOT" "$TERMUX_TMP/libtalloc"
+
+  TERMUX_PREFIX="$TERMUX_ROOT/data/data/com.termux/files/usr"
+  TERMUX_LIB="$TERMUX_PREFIX/lib"
+  TERMUX_SAMBA_LIB="$TERMUX_PREFIX/lib/samba"
+
+  if [[ ! -x "$TERMUX_PREFIX/bin/ntlm_auth" ]]; then
+    echo "[build-imagefs] ERROR: ntlm_auth missing in Termux samba package" >&2
     exit 1
   fi
+
+  mkdir -p "$ROOTFS_DIR/usr/bin"
+  cp -a "$TERMUX_PREFIX/bin/ntlm_auth" "$ROOTFS_DIR/usr/bin/ntlm_auth"
+
+  # Mirror Termux library layout so rpath works
+  mkdir -p "$ROOTFS_DIR/data/data/com.termux/files/usr/lib"
+  mkdir -p "$ROOTFS_DIR/data/data/com.termux/files/usr/lib/samba"
+  cp -a "$TERMUX_LIB/"* "$ROOTFS_DIR/data/data/com.termux/files/usr/lib/"
+  cp -a "$TERMUX_SAMBA_LIB/"* "$ROOTFS_DIR/data/data/com.termux/files/usr/lib/samba/"
 fi
 
 # Optionally overlay known-good wine from a base imagefs bundle
