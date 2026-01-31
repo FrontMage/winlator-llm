@@ -126,12 +126,23 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         envVars.put("LC_ALL", "en_US.utf8");
         envVars.put("DISPLAY", ":0");
         envVars.put("PATH", imageFs.getWinePath()+"/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin");
-        envVars.put("LD_LIBRARY_PATH", "/usr/lib:/usr/lib/aarch64-linux-gnu:/usr/lib/arm-linux-gnueabihf");
+        String defaultLdLibraryPath = "/usr/lib:/usr/lib/aarch64-linux-gnu:/usr/lib/arm-linux-gnueabihf";
+        String termuxLdLibraryPath = "/data/data/com.termux/files/usr/lib:/data/data/com.termux/files/usr/lib/samba";
+        envVars.put("LD_LIBRARY_PATH", defaultLdLibraryPath + ":" + termuxLdLibraryPath);
         envVars.put("ANDROID_SYSVSHM_SERVER", UnixSocketConfig.SYSVSHM_SERVER_PATH);
 
         if ((new File(imageFs.getLib64Dir(), "libandroid-sysvshm.so")).exists() ||
             (new File(imageFs.getLib32Dir(), "libandroid-sysvshm.so")).exists()) envVars.put("LD_PRELOAD", "libandroid-sysvshm.so");
         if (this.envVars != null) envVars.putAll(this.envVars);
+
+        String currentLdLibraryPath = envVars.get("LD_LIBRARY_PATH");
+        if (!currentLdLibraryPath.contains("/data/data/com.termux/files/usr/lib")) {
+            if (currentLdLibraryPath.isEmpty()) {
+                envVars.put("LD_LIBRARY_PATH", defaultLdLibraryPath + ":" + termuxLdLibraryPath);
+            } else {
+                envVars.put("LD_LIBRARY_PATH", currentLdLibraryPath + ":" + termuxLdLibraryPath);
+            }
+        }
 
         boolean bindSHM = envVars.get("WINEESYNC").equals("1");
 
