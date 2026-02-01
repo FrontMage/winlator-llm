@@ -59,6 +59,35 @@ fi
 pacman -R --noconfirm libvorbis flac lame
 pacman -Sy --noconfirm
 pacman -S --noconfirm --needed samba
+
+# Install ntlm_auth and required Samba libraries into rootfs
+ROOTFS_DIR=/data/data/com.winlator/files/rootfs
+mkdir -p "$ROOTFS_DIR"
+NTLM_AUTH_BIN="/usr/bin/ntlm_auth"
+if [[ ! -x "$NTLM_AUTH_BIN" ]]; then
+  echo "[build-rootfs] ERROR: ntlm_auth not found after installing samba" >&2
+  exit 1
+fi
+mkdir -p "$ROOTFS_DIR/usr/bin"
+cp -a "$NTLM_AUTH_BIN" "$ROOTFS_DIR/usr/bin/ntlm_auth"
+
+# Copy Samba plugin directories (used by ntlm_auth)
+for libdir in /usr/lib/samba /usr/lib/samba/private; do
+  if [[ -d "$libdir" ]]; then
+    mkdir -p "$ROOTFS_DIR$libdir"
+    cp -a "$libdir"/. "$ROOTFS_DIR$libdir/"
+  fi
+done
+
+# Copy ntlm_auth dependent shared libraries into rootfs
+ldd "$NTLM_AUTH_BIN" | awk '/=> \\/usr\\/lib/ {print $3} /^\\/usr\\/lib\\// {print $1}' | while read -r dep; do
+  if [[ -f "$dep" ]]; then
+    dest="$ROOTFS_DIR$dep"
+    mkdir -p "$(dirname "$dest")"
+    cp -a "$dep" "$dest"
+  fi
+done
+
 mkdir -p /data/data/com.winlator/files/rootfs/
 cd /tmp
 if ! wget https://github.com/Waim908/rootfs-custom-winlator/releases/download/ori-b11.0/rootfs.tzst; then

@@ -88,6 +88,7 @@ import java.util.concurrent.Executors;
 public class XServerDisplayActivity extends AppCompatActivity implements NavigationView.OnNavigationItemSelectedListener {
     private static final String TAG_GUEST_DEBUG = "GuestDebug";
     private static final int ROOTFS_UTILS_PATCH_VERSION = 1;
+    private static final int SERVICES_PATCH_VERSION = 1;
     private XServerView xServerView;
     private InputControlsView inputControlsView;
     private TouchpadView touchpadView;
@@ -221,7 +222,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         xServer.windowManager.addOnWindowModificationListener(new WindowManager.OnWindowModificationListener() {
             @Override
             public void onUpdateWindowContent(Window window) {
-                if (!winStarted[0] && window.isApplicationWindow()) {
+                if (!winStarted[0] && isReadyWindow(window)) {
                     xServerView.getRenderer().setCursorVisible(true);
                     preloaderDialog.closeOnUiThread();
                     winStarted[0] = true;
@@ -256,6 +257,13 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             }
             setupXEnvironment();
         });
+    }
+
+    private boolean isReadyWindow(Window window) {
+        if (window == null || !window.attributes.isMapped() || !window.isInputOutput()) return false;
+        if (xServer != null && window == xServer.windowManager.rootWindow) return false;
+        if (window.getWidth() <= 1 || window.getHeight() <= 1) return false;
+        return true;
     }
 
     @Override
@@ -424,10 +432,12 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         WineStartMenuCreator.create(this, container);
         WineUtils.createDosdevicesSymlinks(container);
 
+        String servicesPatchVersion = String.valueOf(SERVICES_PATCH_VERSION);
         String startupSelection = String.valueOf(container.getStartupSelection());
-        if (!startupSelection.equals(container.getExtra("startupSelection"))) {
+        if (!servicesPatchVersion.equals(container.getExtra("servicesPatchVersion")) || !startupSelection.equals(container.getExtra("startupSelection"))) {
             WineUtils.changeServicesStatus(container, container.getStartupSelection() != Container.STARTUP_SELECTION_NORMAL);
             container.putExtra("startupSelection", startupSelection);
+            container.putExtra("servicesPatchVersion", servicesPatchVersion);
             containerDataChanged = true;
         }
 
