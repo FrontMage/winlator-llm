@@ -12,6 +12,7 @@ import com.winlator.box86_64.Box86_64PresetManager;
 import com.winlator.core.Callback;
 import com.winlator.core.DefaultVersion;
 import com.winlator.core.EnvVars;
+import com.winlator.core.FileUtils;
 import com.winlator.core.ProcessHelper;
 import com.winlator.core.TarCompressorUtils;
 import com.winlator.xconnector.UnixSocketConfig;
@@ -230,6 +231,16 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         if (!box64File.isFile() || !box64Version.equals(currentBox64Version)) {
             TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, context, "box86_64/box64-" + box64Version + ".tzst", rootDir);
             preferences.edit().putString("current_box64_version", box64Version).apply();
+        }
+
+        ensureLdLinuxSymlink(rootDir);
+    }
+
+    private void ensureLdLinuxSymlink(File rootDir) {
+        File usrLd = new File(rootDir, "usr/lib/ld-linux-aarch64.so.1");
+        File libLd = new File(rootDir, "lib/ld-linux-aarch64.so.1");
+        if (!libLd.exists() && usrLd.exists()) {
+            FileUtils.symlink("/usr/lib/ld-linux-aarch64.so.1", libLd.getAbsolutePath());
         }
     }
 
