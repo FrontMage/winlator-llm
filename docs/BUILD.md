@@ -59,7 +59,7 @@ scripts/build-apk.sh
 （已删除 build-imagefs 脚本，imagefs 由 CI 产物直接提供）
 ```
 
-脚本默认从 `rootfs-custom-winlator` 的 release 下载 `rootfs.tzst`，再打包生成 `dist/imagefs.txz`。
+脚本默认从 `FrontMage/winlator-llm` 的 release（`rootfs-base-10.1`）下载 `rootfs.tzst`，再打包生成 `dist/imagefs.txz`。
 
 ## 遇到问题时的修复开关
 

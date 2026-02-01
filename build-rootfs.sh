@@ -45,7 +45,7 @@ Version:
   xz=> $xzVer
   rootfs-tag=> $customTag
 Repo:
-  [Waim908/rootfs-custom-winlator](https://github.com/Waim908/rootfs-custom-winlator)
+  [FrontMage/winlator-llm](https://github.com/FrontMage/winlator-llm)
 EOF
 }
 if [[ ! -f /tmp/init.sh ]]; then
@@ -89,8 +89,15 @@ ldd "$NTLM_AUTH_BIN" | awk '/=> \\/usr\\/lib/ {print $3} /^\\/usr\\/lib\\// {pri
 done
 
 mkdir -p /data/data/com.winlator/files/rootfs/
+ROOTFS_BASE_REPO="${ROOTFS_BASE_REPO:-FrontMage/winlator-llm}"
+ROOTFS_BASE_TAG="${ROOTFS_BASE_TAG:-rootfs-base-10.1}"
+ROOTFS_BASE_FILE="${ROOTFS_BASE_FILE:-rootfs-10.1.tzst}"
+ROOTFS_BASE_URL="https://github.com/${ROOTFS_BASE_REPO}/releases/download/${ROOTFS_BASE_TAG}/${ROOTFS_BASE_FILE}"
+ROOTFS_BASE_PATH="/tmp/rootfs.tzst"
+
 cd /tmp
-if ! wget https://github.com/Waim908/rootfs-custom-winlator/releases/download/ori-b11.0/rootfs.tzst; then
+if ! wget -O "$ROOTFS_BASE_PATH" "$ROOTFS_BASE_URL"; then
+  echo "[build-rootfs] Failed to download base rootfs: $ROOTFS_BASE_URL" >&2
   exit 1
 fi
 #tar -xf rootfs.tzst -C /data/data/com.winlator/files/rootfs/

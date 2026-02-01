@@ -207,9 +207,13 @@ download_prebuilt_libraries() {
     
     # 下载基础 rootfs
     if [[ ! -f "rootfs.tzst" ]]; then
+        ROOTFS_BASE_REPO="${ROOTFS_BASE_REPO:-FrontMage/winlator-llm}"
+        ROOTFS_BASE_TAG="${ROOTFS_BASE_TAG:-rootfs-base-10.1}"
+        ROOTFS_BASE_FILE="${ROOTFS_BASE_FILE:-rootfs-10.1.tzst}"
+        ROOTFS_BASE_URL="https://github.com/${ROOTFS_BASE_REPO}/releases/download/${ROOTFS_BASE_TAG}/${ROOTFS_BASE_FILE}"
         echo "下载 rootfs..."
-        if ! wget -q --show-progress https://github.com/Waim908/rootfs-custom-winlator/releases/download/ori-b11.0/rootfs.tzst; then
-            echo "❌ rootfs 下载失败"
+        if ! wget -q --show-progress -O rootfs.tzst "$ROOTFS_BASE_URL"; then
+            echo "❌ rootfs 下载失败: $ROOTFS_BASE_URL"
             return 1
         fi
     fi
@@ -533,7 +537,7 @@ build_gstreamer() {
         -Dgst-plugins-bad:opus=disabled \
         -Dgst-plugins-bad:webrtc=disabled \
         -Dgst-plugins-bad:webrtcdsp=disabled \
-        -Dpackage-origin="[rootfs-custom-winlator](https://github.com/Waim908/rootfs-custom-winlator)"
+        -Dpackage-origin="[winlator-llm](https://github.com/FrontMage/winlator-llm)"
     
     if [[ -d "builddir" ]]; then
         meson compile -C builddir && \
@@ -561,7 +565,7 @@ Version:
   MangoHud=> $mangohudVer
   rootfs-tag=> $customTag
 Repo:
-  [Waim908/rootfs-custom-winlator](https://github.com/Waim908/rootfs-custom-winlator)
+  [FrontMage/winlator-llm](https://github.com/FrontMage/winlator-llm)
 Built with Winlator path fixes
 EOF
     
