@@ -79,45 +79,6 @@ for libdir in /usr/lib/samba /usr/lib/samba/private; do
   fi
 done
 
-# Copy ntlm_auth dependent shared libraries into rootfs (recursive)
-copy_deps_recursive() {
-  local rootfs_dir="$1"
-  local start_bin="$2"
-  declare -A seen
-  local queue=("$start_bin")
-
-  while [[ ${#queue[@]} -gt 0 ]]; do
-    local current="${queue[0]}"
-    queue=("${queue[@]:1}")
-    [[ -n "${seen[$current]+x}" ]] && continue
-    seen["$current"]=1
-
-    if [[ ! -f "$current" ]]; then
-      continue
-    fi
-
-    # Parse absolute paths from ldd output
-    local deps
-    deps=$(ldd "$current" 2>/dev/null | awk '{for (i=1;i<=NF;i++) if ($i ~ /^\\//) print $i}')
-    if [[ -z "$deps" ]]; then
-      continue
-    fi
-
-    while read -r dep; do
-      [[ -z "$dep" ]] && continue
-      if [[ -f "$dep" ]]; then
-        local dest="$rootfs_dir$dep"
-        mkdir -p "$(dirname "$dest")"
-        cp -a "$dep" "$dest"
-        # Only recurse into system libs
-        if [[ "$dep" == /usr/lib/* || "$dep" == /lib/* ]]; then
-          queue+=("$dep")
-        fi
-      fi
-    done <<< "$deps"
-  done
-}
-
 # Ensure libwbclient and its deps are included (ntlm_auth depends on it)
 for wb in /usr/lib/libwbclient.so*; do
   if [[ -f "$wb" ]]; then
@@ -126,8 +87,6 @@ for wb in /usr/lib/libwbclient.so*; do
     cp -a "$wb" "$dest"
   fi
 done
-
-copy_deps_recursive "$ROOTFS_DIR" "$NTLM_AUTH_BIN"
 
 mkdir -p /data/data/com.winlator/files/rootfs/
 ROOTFS_BASE_REPO="${ROOTFS_BASE_REPO:-FrontMage/winlator-llm}"
