@@ -90,7 +90,18 @@ copy_pkg_shared_libs() {
 }
 
 pkg_list=$(pacman -Qqo /usr/bin/ntlm_auth /usr/lib/samba 2>/dev/null | sort -u)
+dep_pkgs=()
 for pkg in $pkg_list; do
+  deps=$(pacman -Qi "$pkg" 2>/dev/null | sed -n 's/^Depends On *: //p')
+  for dep in $deps; do
+    [[ "$dep" == "None" ]] && continue
+    dep="${dep%%[<>=]*}"
+    [[ -z "$dep" ]] && continue
+    dep_pkgs+=("$dep")
+  done
+done
+all_pkgs=$(printf "%s\n" $pkg_list ${dep_pkgs[@]} | sort -u)
+for pkg in $all_pkgs; do
   copy_pkg_shared_libs "$pkg"
 done
 
