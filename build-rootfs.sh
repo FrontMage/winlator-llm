@@ -71,6 +71,29 @@ fi
 mkdir -p "$ROOTFS_DIR/usr/bin"
 cp -a "$NTLM_AUTH_BIN" "$ROOTFS_DIR/usr/bin/ntlm_auth"
 
+# Copy Samba-related shared libraries from packages that provide ntlm_auth and samba libs
+copy_pkg_shared_libs() {
+  local pkg="$1"
+  if [[ -z "$pkg" ]]; then
+    return
+  fi
+  pacman -Ql "$pkg" 2>/dev/null | awk '{print $2}' | while read -r path; do
+    [[ -f "$path" ]] || continue
+    case "$path" in
+      *.so|*.so.*)
+        local dest="$ROOTFS_DIR$path"
+        mkdir -p "$(dirname "$dest")"
+        cp -a "$path" "$dest"
+        ;;
+    esac
+  done
+}
+
+pkg_list=$(pacman -Qqo /usr/bin/ntlm_auth /usr/lib/samba 2>/dev/null | sort -u)
+for pkg in $pkg_list; do
+  copy_pkg_shared_libs "$pkg"
+done
+
 # Copy Samba plugin directories (used by ntlm_auth)
 for libdir in /usr/lib/samba /usr/lib/samba/private; do
   if [[ -d "$libdir" ]]; then
