@@ -82,6 +82,9 @@ copy_pkg_shared_libs() {
     case "$path" in
       *.so|*.so.*)
         local dest="$ROOTFS_DIR$path"
+        if [[ -e "$dest" ]]; then
+          continue
+        fi
         mkdir -p "$(dirname "$dest")"
         cp -a "$path" "$dest"
         ;;
