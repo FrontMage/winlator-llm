@@ -89,18 +89,36 @@ copy_pkg_shared_libs() {
   done
 }
 
-pkg_list=$(pacman -Qqo /usr/bin/ntlm_auth /usr/lib/samba 2>/dev/null | sort -u)
-dep_pkgs=()
-for pkg in $pkg_list; do
-  deps=$(pacman -Qi "$pkg" 2>/dev/null | sed -n 's/^Depends On *: //p')
-  for dep in $deps; do
-    [[ "$dep" == "None" ]] && continue
-    dep="${dep%%[<>=]*}"
-    [[ -z "$dep" ]] && continue
-    dep_pkgs+=("$dep")
+collect_dep_pkgs() {
+  local -A seen
+  local queue=("$@")
+  local out=()
+
+  while [[ ${#queue[@]} -gt 0 ]]; do
+    local pkg="${queue[0]}"
+    queue=("${queue[@]:1}")
+    [[ -z "$pkg" ]] && continue
+    if [[ -n "${seen[$pkg]+x}" ]]; then
+      continue
+    fi
+    seen["$pkg"]=1
+    out+=("$pkg")
+
+    local deps
+    deps=$(pacman -Qi "$pkg" 2>/dev/null | sed -n 's/^Depends On *: //p')
+    for dep in $deps; do
+      [[ "$dep" == "None" ]] && continue
+      dep="${dep%%[<>=]*}"
+      [[ -z "$dep" ]] && continue
+      queue+=("$dep")
+    done
   done
-done
-all_pkgs=$(printf "%s\n" $pkg_list ${dep_pkgs[@]} | sort -u)
+
+  printf "%s\n" "${out[@]}"
+}
+
+pkg_list=$(pacman -Qqo /usr/bin/ntlm_auth /usr/lib/samba 2>/dev/null | sort -u)
+all_pkgs=$(collect_dep_pkgs $pkg_list | sort -u)
 for pkg in $all_pkgs; do
   copy_pkg_shared_libs "$pkg"
 done
