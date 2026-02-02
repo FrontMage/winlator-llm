@@ -64,7 +64,9 @@ public class ContainerManager {
     public void activateContainer(Container container) {
         container.setRootDir(new File(homeDir, ImageFs.USER+"-"+container.id));
         File file = new File(homeDir, ImageFs.USER);
-        file.delete();
+        if (file.exists()) {
+            FileUtils.delete(file);
+        }
         FileUtils.symlink("./"+ImageFs.USER+"-"+container.id, file.getPath());
     }
 
