@@ -75,7 +75,10 @@ jobs:
             patchelf \
             libde265 \
             wget \
-            ca-certificates
+            ca-certificates \
+            tar \
+            xz \
+            zstd
           exit 0
           EOF
           
