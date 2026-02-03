@@ -56,7 +56,7 @@ else
   # echo "vorbis=> $vorbisVer"
   echo "xz=> $xzVer"
 fi
-pacman -R --noconfirm libvorbis flac lame
+pacman -R --noconfirm libvorbis flac lame || echo "[build-rootfs] skip remove libvorbis/flac/lame (deps)"
 pacman -Sy --noconfirm
 pacman -S --noconfirm --needed samba
 
