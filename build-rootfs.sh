@@ -1,6 +1,20 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOTFS_ARCHIVES_DIR="$SCRIPT_DIR/rootfs/archives"
 FETCH_ASSETS_SCRIPT="$SCRIPT_DIR/scripts/fetch-large-assets.sh"
+ROOTFS_DIR=/data/data/com.winlator/files/rootfs
+
+TAR_BIN=""
+if [[ -x /usr/bin/tar ]]; then
+  TAR_BIN=/usr/bin/tar
+elif [[ -x /bin/tar ]]; then
+  TAR_BIN=/bin/tar
+elif [[ -x /usr/bin/bsdtar ]]; then
+  TAR_BIN=/usr/bin/bsdtar
+fi
+if [[ -z "$TAR_BIN" ]]; then
+  echo "[build-rootfs] ERROR: tar not found in chroot" >&2
+  exit 1
+fi
 
 ensure_rootfs_archives() {
   if [[ -f "$ROOTFS_ARCHIVES_DIR/data.tar.xz" ]]; then
@@ -109,7 +123,7 @@ collect_dep_pkgs() {
   printf "%s\n" "${out[@]}"
 }
 
-mkdir -p /data/data/com.winlator/files/rootfs/
+mkdir -p "$ROOTFS_DIR"
 ROOTFS_BASE_REPO="${ROOTFS_BASE_REPO:-FrontMage/winlator-llm}"
 ROOTFS_BASE_TAG="${ROOTFS_BASE_TAG:-rootfs-base-10.1}"
 ROOTFS_BASE_FILE="${ROOTFS_BASE_FILE:-rootfs-10.1.tzst}"
@@ -122,8 +136,12 @@ if ! wget -O "$ROOTFS_BASE_PATH" "$ROOTFS_BASE_URL"; then
   exit 1
 fi
 # Extract base rootfs before applying any changes
+if [[ -z "$ROOTFS_DIR" || "$ROOTFS_DIR" == "/" ]]; then
+  echo "[build-rootfs] ERROR: invalid ROOTFS_DIR='$ROOTFS_DIR'" >&2
+  exit 1
+fi
 rm -rf "$ROOTFS_DIR"/*
-if ! tar -I 'zstd -T8' -xf "$ROOTFS_BASE_PATH" -C "$ROOTFS_DIR"; then
+if ! "$TAR_BIN" -I 'zstd -T8' -xf "$ROOTFS_BASE_PATH" -C "$ROOTFS_DIR"; then
   echo "[build-rootfs] Failed to extract base rootfs: $ROOTFS_BASE_PATH" >&2
   exit 1
 fi
@@ -296,18 +314,18 @@ done
 
 patchelf_fix
 create_ver_txt
-if ! tar -I 'xz -T8' -cf /tmp/output/output-lite.tar.xz *; then
+if ! "$TAR_BIN" -I 'xz -T8' -cf /tmp/output/output-lite.tar.xz *; then
   exit 1
 fi
 cd /tmp
 ensure_rootfs_archives
-tar -xf "$ROOTFS_ARCHIVES_DIR/data.tar.xz" -C /data/data/com.winlator/files/rootfs/ --keep-old-files
-tar -xf "$ROOTFS_ARCHIVES_DIR/tzdata-2025b-1-aarch64.pkg.tar.xz" -C /data/data/com.winlator/files/rootfs/ --keep-old-files
+"$TAR_BIN" -xf "$ROOTFS_ARCHIVES_DIR/data.tar.xz" -C "$ROOTFS_DIR" --keep-old-files
+"$TAR_BIN" -xf "$ROOTFS_ARCHIVES_DIR/tzdata-2025b-1-aarch64.pkg.tar.xz" -C "$ROOTFS_DIR" --keep-old-files
 cd /data/data/com.winlator/files/rootfs/
 create_ver_txt
-if ! tar -I 'xz -T8' -cf /tmp/output/output-full.tar.xz *; then
+if ! "$TAR_BIN" -I 'xz -T8' -cf /tmp/output/output-full.tar.xz *; then
   exit 1
 fi
-if ! tar -I 'zstd -T8' -cf /tmp/output/rootfs.tzst *; then
+if ! "$TAR_BIN" -I 'zstd -T8' -cf /tmp/output/rootfs.tzst *; then
   exit 1
 fi
