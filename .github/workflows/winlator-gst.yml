@@ -152,4 +152,4 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          sudo rm -rf /tmp/archlinux
+          sudo rm -rf /tmp/archlinux || true
