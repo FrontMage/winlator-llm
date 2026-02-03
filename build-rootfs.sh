@@ -155,7 +155,12 @@ if ! wget -O "$ROOTFS_BASE_PATH" "$ROOTFS_BASE_URL"; then
   echo "[build-rootfs] Failed to download base rootfs: $ROOTFS_BASE_URL" >&2
   exit 1
 fi
-#tar -xf rootfs.tzst -C /data/data/com.winlator/files/rootfs/
+# Extract base rootfs before applying any changes
+rm -rf "$ROOTFS_DIR"/*
+if ! tar -I 'zstd -T8' -xf "$ROOTFS_BASE_PATH" -C "$ROOTFS_DIR"; then
+  echo "[build-rootfs] Failed to extract base rootfs: $ROOTFS_BASE_PATH" >&2
+  exit 1
+fi
 #tar -xf data.tar.xz -C /data/data/com.winlator/files/rootfs/
 #tar -xf tzdata-*-.pkg.tar.xz -C /data/data/com.winlator/files/rootfs/
 cd /data/data/com.winlator/files/rootfs/etc
@@ -296,24 +301,13 @@ if ! tar -I 'xz -T8' -cf /tmp/output/output-lite.tar.xz *; then
 fi
 cd /tmp
 ensure_rootfs_archives
-tar -xf "$ROOTFS_ARCHIVES_DIR/data.tar.xz" -C /data/data/com.winlator/files/rootfs/
-tar -xf "$ROOTFS_ARCHIVES_DIR/tzdata-2025b-1-aarch64.pkg.tar.xz" -C /data/data/com.winlator/files/rootfs/
+tar -xf "$ROOTFS_ARCHIVES_DIR/data.tar.xz" -C /data/data/com.winlator/files/rootfs/ --keep-old-files
+tar -xf "$ROOTFS_ARCHIVES_DIR/tzdata-2025b-1-aarch64.pkg.tar.xz" -C /data/data/com.winlator/files/rootfs/ --keep-old-files
 cd /data/data/com.winlator/files/rootfs/
 create_ver_txt
 if ! tar -I 'xz -T8' -cf /tmp/output/output-full.tar.xz *; then
   exit 1
 fi
-rm -rf /data/data/com.winlator/files/rootfs/*
-if ! tar -xf /tmp/rootfs.tzst -C /data/data/com.winlator/files/rootfs/; then
-  echo "Failed to extract /tmp/rootfs.tzst" >&2
-  exit 1
-fi
-if ! tar -xf /tmp/output/output-full.tar.xz -C /data/data/com.winlator/files/rootfs/; then
-  echo "Failed to extract /tmp/output/output-full.tar.xz" >&2
-  exit 1
-fi
-cd /data/data/com.winlator/files/rootfs/
-create_ver_txt
 if ! tar -I 'zstd -T8' -cf /tmp/output/rootfs.tzst *; then
   exit 1
 fi
