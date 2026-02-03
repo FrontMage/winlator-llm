@@ -60,17 +60,6 @@ pacman -R --noconfirm libvorbis flac lame
 pacman -Sy --noconfirm
 pacman -S --noconfirm --needed samba
 
-# Install ntlm_auth and required Samba libraries into rootfs
-ROOTFS_DIR=/data/data/com.winlator/files/rootfs
-mkdir -p "$ROOTFS_DIR"
-NTLM_AUTH_BIN="/usr/bin/ntlm_auth"
-if [[ ! -x "$NTLM_AUTH_BIN" ]]; then
-  echo "[build-rootfs] ERROR: ntlm_auth not found after installing samba" >&2
-  exit 1
-fi
-mkdir -p "$ROOTFS_DIR/usr/bin"
-cp -a "$NTLM_AUTH_BIN" "$ROOTFS_DIR/usr/bin/ntlm_auth"
-
 # Copy Samba-related shared libraries from packages that provide ntlm_auth and samba libs
 copy_pkg_shared_libs() {
   local pkg="$1"
@@ -119,29 +108,6 @@ collect_dep_pkgs() {
 
   printf "%s\n" "${out[@]}"
 }
-
-pkg_list=$(pacman -Qqo /usr/bin/ntlm_auth /usr/lib/samba 2>/dev/null | sort -u)
-all_pkgs=$(collect_dep_pkgs $pkg_list | sort -u)
-for pkg in $all_pkgs; do
-  copy_pkg_shared_libs "$pkg"
-done
-
-# Copy Samba plugin directories (used by ntlm_auth)
-for libdir in /usr/lib/samba /usr/lib/samba/private; do
-  if [[ -d "$libdir" ]]; then
-    mkdir -p "$ROOTFS_DIR$libdir"
-    cp -a "$libdir"/. "$ROOTFS_DIR$libdir/"
-  fi
-done
-
-# Ensure libwbclient and its deps are included (ntlm_auth depends on it)
-for wb in /usr/lib/libwbclient.so*; do
-  if [[ -f "$wb" ]]; then
-    dest="$ROOTFS_DIR$wb"
-    mkdir -p "$(dirname "$dest")"
-    cp -a "$wb" "$dest"
-  fi
-done
 
 mkdir -p /data/data/com.winlator/files/rootfs/
 ROOTFS_BASE_REPO="${ROOTFS_BASE_REPO:-FrontMage/winlator-llm}"
@@ -294,6 +260,40 @@ export date=$(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S')
 echo "Package"
 mkdir /tmp/output
 cd /data/data/com.winlator/files/rootfs/
+
+# Install ntlm_auth and required Samba libraries into rootfs (after base extraction)
+ROOTFS_DIR=/data/data/com.winlator/files/rootfs
+NTLM_AUTH_BIN="/usr/bin/ntlm_auth"
+if [[ ! -x "$NTLM_AUTH_BIN" ]]; then
+  echo "[build-rootfs] ERROR: ntlm_auth not found after installing samba" >&2
+  exit 1
+fi
+mkdir -p "$ROOTFS_DIR/usr/bin"
+cp -a "$NTLM_AUTH_BIN" "$ROOTFS_DIR/usr/bin/ntlm_auth"
+
+pkg_list=$(pacman -Qqo /usr/bin/ntlm_auth /usr/lib/samba 2>/dev/null | sort -u)
+all_pkgs=$(collect_dep_pkgs $pkg_list | sort -u)
+for pkg in $all_pkgs; do
+  copy_pkg_shared_libs "$pkg"
+done
+
+# Copy Samba plugin directories (used by ntlm_auth)
+for libdir in /usr/lib/samba /usr/lib/samba/private; do
+  if [[ -d "$libdir" ]]; then
+    mkdir -p "$ROOTFS_DIR$libdir"
+    cp -a "$libdir"/. "$ROOTFS_DIR$libdir/"
+  fi
+done
+
+# Ensure libwbclient and its deps are included (ntlm_auth depends on it)
+for wb in /usr/lib/libwbclient.so*; do
+  if [[ -f "$wb" ]]; then
+    dest="$ROOTFS_DIR$wb"
+    mkdir -p "$(dirname "$dest")"
+    cp -a "$wb" "$dest"
+  fi
+done
+
 patchelf_fix
 create_ver_txt
 if ! tar -I 'xz -T8' -cf /tmp/output/output-lite.tar.xz *; then
