@@ -101,6 +101,30 @@ Native 代码的入口与装配点在 `app/src/main/cpp/CMakeLists.txt`，它会
 
 因此，“应用代码 + 资产产线”共同构成了这个项目的完整架构。
 
+## imagefs-v1 的 ARM 与 x86 分界（实测结论）
+imagefs 是 **ARM 系统底座 + x86_64 Wine 运行时** 的混合体。以下结论来自对 `imagefs-v1` 解包后的实测。
+
+ARM 侧（给 box64/宿主用的系统环境）：
+- 位置主要在 `/usr`、`/lib`、`/bin`、`/etc`
+- 例子（file 识别为 ARM aarch64 ELF）
+- `/usr/bin/locale`
+- `/usr/lib/ld-linux-aarch64.so.1`
+- `/usr/lib/libc.so.6`、`/usr/lib/libm.so.6`
+
+x86/x86_64 侧（Wine 运行时）：
+- 位置集中在 `/opt/wine`
+- 例子（file 识别为 x86_64 ELF / PE32）
+- `/opt/wine/bin/wine`、`/opt/wine/bin/wineserver`
+- `/opt/wine/lib/wine/x86_64-unix/ntdll.so`（x86_64）
+- `/opt/wine/lib/wine/i386-windows/ntdll.dll`（PE32）
+
+环境变量也印证了“ARM 底座 + x86 Wine”的分工：
+- `PATH=/opt/wine/bin:...:/usr/bin`
+- `LD_LIBRARY_PATH=/usr/lib:/usr/lib/aarch64-linux-gnu:...`
+- 实际启动：`box64 wine ...`
+
+结论：**rootfs 不是纯 ARM 也不是纯 x86，而是 ARM 为系统底座、x86_64 为应用层（Wine 运行时）**。
+
 ## 快速心智模型（建议记住这三句话）
 - UI 负责配置与装配，XEnvironment 负责把服务拼起来。
 - 客体真正运行在 RootFS 内，通过 proot + box64 + wine 进入。
