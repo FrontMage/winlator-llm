@@ -300,7 +300,13 @@ public abstract class WineUtils {
 
             for (String service : services) {
                 String name = service.substring(0, service.indexOf(":"));
-                int value = onlyEssential ? 4 : Character.getNumericValue(service.charAt(service.length()-1));
+                int value;
+                if (onlyEssential) {
+                    value = name.equals("RpcSs") ? 3 : 4;
+                }
+                else {
+                    value = Character.getNumericValue(service.charAt(service.length()-1));
+                }
                 registryEditor.setDwordValue("System\\CurrentControlSet\\Services\\"+name, "Start", value);
             }
         }

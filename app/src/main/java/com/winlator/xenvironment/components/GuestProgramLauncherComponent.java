@@ -223,10 +223,10 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
     private void addBox86EnvVars(EnvVars envVars, boolean enableLogs) {
         envVars.put("BOX86_NOBANNER", ProcessHelper.PRINT_DEBUG && enableLogs ? "0" : "1");
         envVars.put("BOX86_DYNAREC", "1");
+        envVars.put("BOX86_DYNAREC_MISSING", "1");
 
         if (enableLogs) {
-            envVars.put("BOX86_LOG", "1");
-            envVars.put("BOX86_DYNAREC_MISSING", "1");
+            envVars.put("BOX86_LOG", "0");
         }
 
         envVars.putAll(Box86_64PresetManager.getEnvVars("box86", environment.getContext(), box86Preset));
@@ -237,10 +237,10 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
     private void addBox64EnvVars(EnvVars envVars, boolean enableLogs) {
         envVars.put("BOX64_NOBANNER", ProcessHelper.PRINT_DEBUG && enableLogs ? "0" : "1");
         if (wow64Mode) envVars.put("BOX64_MMAP32", "1");
+        envVars.put("BOX64_DYNAREC_MISSING", "1");
 
         if (enableLogs) {
-            envVars.put("BOX64_LOG", "1");
-            envVars.put("BOX64_DYNAREC_MISSING", "1");
+            envVars.put("BOX64_LOG", "0");
         }
 
         envVars.putAll(Box86_64PresetManager.getEnvVars("box64", environment.getContext(), box64Preset));

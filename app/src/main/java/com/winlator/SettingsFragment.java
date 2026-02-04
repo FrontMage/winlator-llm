@@ -53,8 +53,11 @@ import java.util.List;
 import java.util.concurrent.Executors;
 
 public class SettingsFragment extends Fragment {
-    public static final String DEFAULT_WINE_DEBUG_CHANNELS = "warn,err,fixme,winsock,wininet,winhttp,schannel,secur32,crypt,ntlm,seh,timestamp";
+    public static final String DEFAULT_WINE_DEBUG_CHANNELS = "warn,err,fixme";
     private static final String LEGACY_WINE_DEBUG_CHANNELS = "warn,err,fixme";
+    private static final String PREVIOUS_WINE_DEBUG_CHANNELS = "warn,err";
+    private static final String PREVIOUS_WINE_DEBUG_CHANNELS_WITH_SEH = "warn,err,loaddll,seh,timestamp,ntlm,secur32,msv1_0";
+    private static final String PREVIOUS_WINE_DEBUG_CHANNELS_WITHOUT_SEH = "warn,err,loaddll,timestamp,ntlm,secur32,msv1_0";
     private Callback<Uri> selectWineFileCallback;
     private PreloaderDialog preloaderDialog;
     private SharedPreferences preferences;
@@ -115,7 +118,10 @@ public class SettingsFragment extends Fragment {
         cbEnableWineDebug.setChecked(preferences.getBoolean("enable_wine_debug", false));
 
         String storedDebugChannels = preferences.getString("wine_debug_channels", null);
-        if (LEGACY_WINE_DEBUG_CHANNELS.equals(storedDebugChannels)) {
+        if (LEGACY_WINE_DEBUG_CHANNELS.equals(storedDebugChannels)
+                || PREVIOUS_WINE_DEBUG_CHANNELS.equals(storedDebugChannels)
+                || PREVIOUS_WINE_DEBUG_CHANNELS_WITHOUT_SEH.equals(storedDebugChannels)
+                || PREVIOUS_WINE_DEBUG_CHANNELS_WITH_SEH.equals(storedDebugChannels)) {
             preferences.edit().putString("wine_debug_channels", DEFAULT_WINE_DEBUG_CHANNELS).apply();
             storedDebugChannels = DEFAULT_WINE_DEBUG_CHANNELS;
         }
