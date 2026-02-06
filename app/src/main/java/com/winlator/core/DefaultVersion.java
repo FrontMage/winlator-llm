@@ -3,6 +3,8 @@ package com.winlator.core;
 public abstract class DefaultVersion {
     public static final String BOX86 = "0.3.2";
     public static final String BOX64 = "0.3.6";
+    public static final String FEXCORE = "2508";
+    public static final String ARM64EC_WINE = "10.0";
     public static final String TURNIP = "25.1.0";
     public static final String ZINK = "22.2.5";
     public static final String VIRGL = "23.1.9";

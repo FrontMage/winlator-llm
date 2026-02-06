@@ -125,6 +125,42 @@ x86/x86_64 侧（Wine 运行时）：
 
 结论：**rootfs 不是纯 ARM 也不是纯 x86，而是 ARM 为系统底座、x86_64 为应用层（Wine 运行时）**。
 
+## FEXCore 组件打包方式（Winlator-Contents 约定）
+Winlator 的 `Arm64EC` 容器并不是“完整 FEX 运行时”，而是通过 **两个 DLL** 让 Wine 的 wow64 层调用 FEXCore。
+这两个 DLL 会通过 `.wcp` 包分发，安装时解包到 `C:\windows\system32`。
+
+在 `Winlator-Contents` 仓库中，FEXCore 的 `.wcp` 文件是 `tar + zstd` 的归档，包含如下结构：
+
+```
+profile.json
+system32/
+  libarm64ecfex.dll
+  libwow64fex.dll
+```
+
+其中 `profile.json` 会声明安装目标（示例）：
+
+```
+{
+  "type": "FEXCore",
+  "versionName": "2508",
+  "versionCode": 1,
+  "description": "FEXCore",
+  "files": [
+    {"source": "system32/libarm64ecfex.dll", "target": "${system32}/libarm64ecfex.dll"},
+    {"source": "system32/libwow64fex.dll", "target": "${system32}/libwow64fex.dll"}
+  ]
+}
+```
+
+打包方式（示例）：
+
+```
+tar -C pkg -I "zstd -19" -cf fexcore-2508.wcp profile.json system32
+```
+
+要点：**FEXCore wcp 只携带这两个 DLL 和 profile.json**，并不会附带完整的 FEX 运行时或 rootfs。
+
 ## 快速心智模型（建议记住这三句话）
 - UI 负责配置与装配，XEnvironment 负责把服务拼起来。
 - 客体真正运行在 RootFS 内，通过 proot + box64 + wine 进入。

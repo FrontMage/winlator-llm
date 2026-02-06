@@ -14,7 +14,7 @@ import java.util.regex.Pattern;
 
 public class WineInfo implements Parcelable {
     public static final WineInfo MAIN_WINE_VERSION = new WineInfo("9.2", "x86_64");
-    private static final Pattern pattern = Pattern.compile("^wine\\-([0-9\\.]+)\\-?([0-9\\.]+)?\\-(x86|x86_64)$");
+    private static final Pattern pattern = Pattern.compile("^wine\\-([0-9\\.]+)\\-?([0-9\\.]+)?\\-(x86|x86_64|arm64ec)$");
     public final String version;
     public final String subversion;
     public final String path;
@@ -50,10 +50,20 @@ public class WineInfo implements Parcelable {
     }
 
     public boolean isWin64() {
-        return arch.equals("x86_64");
+        return arch.equals("x86_64") || arch.equals("arm64ec");
+    }
+
+    public boolean isArm64EC() {
+        return arch.equals("arm64ec");
     }
 
     public String getExecutable(Context context, boolean wow64Mode) {
+        if (isArm64EC()) {
+            if (this == MAIN_WINE_VERSION) {
+                return "wine";
+            }
+            return (new File(path, "/bin/wine")).isFile() ? "wine" : "wine64";
+        }
         if (this == MAIN_WINE_VERSION) {
             File wineBinDir = new File(ImageFs.find(context).getRootDir(), "/opt/wine/bin");
             File wineBinFile = new File(wineBinDir, "wine");

@@ -13,6 +13,9 @@ dxvk-*.tzst
 app/src/main/assets/imagefs.txz
 app/src/main/assets/imagefs_patches.tzst
 app/src/main/assets/container_pattern.tzst
+app/src/main/assets/container_pattern_common.tzst
+app/src/main/assets/wine-*-container_pattern.tzst
+app/src/main/assets/wine-*_container_pattern.tzst
 app/src/main/assets/wincomponents/direct3d.tzst
 app/src/main/assets/graphics_driver/zink-22.2.5.tzst
 app/src/main/assets/graphics_driver/virgl-23.1.9.tzst
@@ -25,6 +28,7 @@ app/src/main/assets/box86_64/box64-0.4.0.tzst
 app/src/main/assets/dxwrapper/dxvk-2.4.1.tzst
 app/src/main/assets/dxwrapper/vkd3d-2.12.tzst
 app/src/main/assets/dxwrapper/vkd3d-2.13.tzst
+app/src/main/assets/preinstall/proton-10-arm64ec.wcp.xz
 rootfs/archives/data.tar.xz
 
 # temp
@@ -35,6 +39,8 @@ tmp/
 # tools
 .codex/
 codex/
+.beads/
+third_party/
 
 # macOS
 .DS_Store

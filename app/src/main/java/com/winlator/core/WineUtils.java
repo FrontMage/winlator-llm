@@ -135,18 +135,31 @@ public abstract class WineUtils {
 
     public static ArrayList<WineInfo> getInstalledWineInfos(Context context) {
         ArrayList<WineInfo> wineInfos = new ArrayList<>();
-        wineInfos.add(WineInfo.MAIN_WINE_VERSION);
         File installedWineDir = ImageFs.find(context).getInstalledWineDir();
 
         File[] files = installedWineDir.listFiles();
         if (files != null) {
             for (File file : files) {
                 String name = file.getName();
-                if (name.startsWith("wine")) wineInfos.add(WineInfo.fromIdentifier(context, name));
+                if (name.startsWith("wine")) {
+                    WineInfo wineInfo = WineInfo.fromIdentifier(context, name);
+                    if (wineInfo.isArm64EC()) {
+                        wineInfos.add(wineInfo);
+                    }
+                }
             }
         }
 
+        if (wineInfos.isEmpty()) wineInfos.add(WineInfo.MAIN_WINE_VERSION);
+
         return wineInfos;
+    }
+
+    public static WineInfo getFirstArm64ECWineInfo(Context context) {
+        for (WineInfo wineInfo : getInstalledWineInfos(context)) {
+            if (wineInfo.isArm64EC()) return wineInfo;
+        }
+        return null;
     }
 
     private static void setWindowMetrics(WineRegistryEditor registryEditor) {

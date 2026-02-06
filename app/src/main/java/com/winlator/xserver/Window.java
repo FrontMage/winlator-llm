@@ -177,7 +177,11 @@ public class Window extends XResource {
 
     public boolean isApplicationWindow() {
         int windowGroup = getWMHintsValue(WMHints.WINDOW_GROUP);
-        return attributes.isMapped() && !getName().isEmpty() && windowGroup == id && width > 1 && height > 1;
+        // Align with Ludashi/bionic: don't require WM_NAME to be set.
+        // Some Wine/X11 windows (especially early during startup or for the virtual desktop) may
+        // map before a name is assigned, and treating them as non-application windows can keep
+        // the "Starting up..." dialog stuck forever.
+        return attributes.isMapped() && windowGroup == id && width > 1 && height > 1;
     }
 
     public boolean isInputOutput() {

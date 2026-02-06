@@ -136,7 +136,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
         NavigationView navigationView = findViewById(R.id.NavigationView);
         ProcessHelper.removeAllDebugCallbacks();
-        boolean enableLogs = preferences.getBoolean("enable_wine_debug", false) || preferences.getBoolean("enable_box86_64_logs", false);
+        boolean enableLogs = preferences.getBoolean("enable_wine_debug", false);
         if (enableLogs) {
             ProcessHelper.addDebugCallback(debugDialog = new DebugDialog(this));
             ProcessHelper.addDebugCallback((line) -> Log.d(TAG_GUEST_DEBUG, line));
@@ -175,6 +175,14 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
             String wineVersion = container.getWineVersion();
             wineInfo = WineInfo.fromIdentifier(this, wineVersion);
+            if (!wineInfo.isArm64EC()) {
+                WineInfo arm64ec = WineUtils.getFirstArm64ECWineInfo(this);
+                if (arm64ec != null) {
+                    wineInfo = arm64ec;
+                    container.setWineVersion(arm64ec.identifier());
+                    container.saveData();
+                }
+            }
 
             if (wineInfo != WineInfo.MAIN_WINE_VERSION) imageFs.setWinePath(wineInfo.path);
 
@@ -384,6 +392,11 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         String imgVersion = String.valueOf(imageFs.getVersion());
         boolean containerDataChanged = false;
 
+        // FEX-only / arm64ec robustness: some prefixes are created before the selected Wine is fully
+        // installed in imagefs/opt, which can leave system32/syswow64 without core builtins
+        // (kernel32, winemenubuilder, etc.) and cause immediate startup failure.
+        ensureWineBuiltinsInPrefix();
+
         if (!container.getExtra("appVersion").equals(appVersion) || !container.getExtra("imgVersion").equals(imgVersion)) {
             applyGeneralPatches(container);
             container.putExtra("appVersion", appVersion);
@@ -434,10 +447,77 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         if (containerDataChanged) container.saveData();
     }
 
+    private void ensureWineBuiltinsInPrefix() {
+        if (container == null || wineInfo == null || wineInfo.path == null || wineInfo.path.isEmpty()) return;
+
+        File containerDir = container.getRootDir();
+        if (containerDir == null || !containerDir.isDirectory()) return;
+
+        File windowsDir = new File(containerDir, ".wine/drive_c/windows");
+        File system32Dir = new File(windowsDir, "system32");
+        File syswow64Dir = new File(windowsDir, "syswow64");
+
+        // Fast-path: if both key DLLs exist, assume the prefix is populated.
+        boolean haveSystem32Kernel32 = new File(system32Dir, "kernel32.dll").isFile();
+        boolean haveSyswow64Kernel32 = new File(syswow64Dir, "kernel32.dll").isFile();
+        if (haveSystem32Kernel32 && haveSyswow64Kernel32) return;
+
+        int copied = 0;
+        if (wineInfo.isArm64EC()) {
+            copied += copyWineBuiltinsIfMissing(wineInfo, "aarch64-windows", system32Dir);
+        }
+        else {
+            copied += copyWineBuiltinsIfMissing(wineInfo, "x86_64-windows", system32Dir);
+        }
+        copied += copyWineBuiltinsIfMissing(wineInfo, "i386-windows", syswow64Dir);
+
+        Log.i(TAG_GUEST_DEBUG, "Prefix builtins repair: copied=" + copied +
+                " wine=" + wineInfo.identifier() +
+                " system32_kernel32=" + new File(system32Dir, "kernel32.dll").isFile() +
+                " syswow64_kernel32=" + new File(syswow64Dir, "kernel32.dll").isFile());
+    }
+
+    private int copyWineBuiltinsIfMissing(WineInfo wineInfo, String srcName, File dstDir) {
+        File srcDir = new File(wineInfo.path + "/lib/wine/" + srcName);
+        File[] srcFiles = srcDir.listFiles(file -> file != null && file.isFile());
+        if (srcFiles == null || srcFiles.length == 0) {
+            Log.w(TAG_GUEST_DEBUG, "Prefix builtins repair: missing src dir: " + srcDir.getAbsolutePath());
+            return 0;
+        }
+
+        if (!dstDir.isDirectory() && !dstDir.mkdirs()) {
+            Log.w(TAG_GUEST_DEBUG, "Prefix builtins repair: failed to create dst dir: " + dstDir.getAbsolutePath());
+            return 0;
+        }
+
+        int copied = 0;
+        for (File file : srcFiles) {
+            String name = file.getName();
+            File srcFile = file;
+
+            // Ludashi/bionic special-case: use the i386 iexplore.exe on arm64ec.
+            if ("iexplore.exe".equals(name) && wineInfo.isArm64EC() && "aarch64-windows".equals(srcName)) {
+                File fallback = new File(wineInfo.path + "/lib/wine/i386-windows/iexplore.exe");
+                if (fallback.isFile()) srcFile = fallback;
+            }
+
+            // Ludashi/bionic skips these in common extraction.
+            if ("tabtip.exe".equals(name) || "icu.dll".equals(name)) continue;
+
+            File dstFile = new File(dstDir, name);
+            if (dstFile.exists()) continue;
+
+            if (FileUtils.copy(srcFile, dstFile)) copied++;
+        }
+
+        return copied;
+    }
+
     private void setupXEnvironment() {
         envVars.put("MESA_DEBUG", "silent");
         envVars.put("MESA_NO_ERROR", "1");
-        envVars.put("WINEPREFIX", ImageFs.WINEPREFIX);
+        envVars.put("LC_ALL", "en_US.utf8");
+        envVars.put("WINEPREFIX", imageFs.getRootDir().getPath() + ImageFs.WINEPREFIX);
 
         boolean enableWineDebug = preferences.getBoolean("enable_wine_debug", false);
         String wineDebugChannels = preferences.getString("wine_debug_channels", SettingsFragment.DEFAULT_WINE_DEBUG_CHANNELS);
@@ -447,6 +527,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         FileUtils.clear(imageFs.getTmpDir());
 
         GuestProgramLauncherComponent guestProgramLauncherComponent = new GuestProgramLauncherComponent();
+        guestProgramLauncherComponent.setArm64ecWine(wineInfo != null && wineInfo.isArm64EC());
 
         if (container != null) {
             if (container.getStartupSelection() == Container.STARTUP_SELECTION_AGGRESSIVE) winHandler.killProcess("services.exe");
@@ -460,32 +541,36 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             if (shortcut != null) envVars.putAll(shortcut.getExtra("envVars"));
             if (!envVars.has("WINEESYNC")) envVars.put("WINEESYNC", "1");
 
-            boolean enableLogs = preferences.getBoolean("enable_wine_debug", false) ||
-                preferences.getBoolean("enable_box86_64_logs", false);
+            boolean enableLogs = enableWineDebug;
             if (enableLogs) setupSessionLogging();
 
             ArrayList<String> bindingPaths = new ArrayList<>();
             for (String[] drive : container.drivesIterator()) bindingPaths.add(drive[1]);
             guestProgramLauncherComponent.setBindingPaths(bindingPaths.toArray(new String[0]));
-            guestProgramLauncherComponent.setBox86Preset(shortcut != null ? shortcut.getExtra("box86Preset", container.getBox86Preset()) : container.getBox86Preset());
-            guestProgramLauncherComponent.setBox64Preset(shortcut != null ? shortcut.getExtra("box64Preset", container.getBox64Preset()) : container.getBox64Preset());
+            guestProgramLauncherComponent.setFEXCoreVersion(shortcut != null ? shortcut.getExtra("fexcoreVersion", container.getFEXCoreVersion()) : container.getFEXCoreVersion());
+            guestProgramLauncherComponent.setFEXCorePreset(shortcut != null ? shortcut.getExtra("fexcorePreset", container.getFEXCorePreset()) : container.getFEXCorePreset());
         }
 
         environment = new XEnvironment(this, imageFs);
         environment.addComponent(new SysVSharedMemoryComponent(xServer, UnixSocketConfig.createSocket(rootPath, UnixSocketConfig.SYSVSHM_SERVER_PATH)));
+        ensureLegacyTmpLink(rootPath, UnixSocketConfig.SYSVSHM_SERVER_PATH);
+
         environment.addComponent(new XServerComponent(xServer, UnixSocketConfig.createSocket(rootPath, UnixSocketConfig.XSERVER_PATH)));
+        ensureLegacyTmpLink(rootPath, UnixSocketConfig.XSERVER_PATH);
         environment.addComponent(new NetworkInfoUpdateComponent());
 
         if (audioDriver.equals("alsa")) {
             ALSAClient.setDebug(preferences.getBoolean("enable_alsa_debug", false));
-            ALSAClient.setUseShm(false);
-            // Use guest-visible socket path for ALSA client (the server still binds on host rootfs).
-            envVars.put("ANDROID_ALSA_SERVER", UnixSocketConfig.ALSA_SERVER_PATH);
-            envVars.put("ANDROID_ASERVER_USE_SHM", "false");
+            ALSAClient.setUseShm(true);
+            // Use guest-visible socket path for ALSA client.
+            String rootPathForGuest = (wineInfo != null && wineInfo.isArm64EC()) ? rootPath : "";
+            envVars.put("ANDROID_ALSA_SERVER", rootPathForGuest + UnixSocketConfig.ALSA_SERVER_PATH);
+            envVars.put("ANDROID_ASERVER_USE_SHM", "true");
             environment.addComponent(new ALSAServerComponent(
                 UnixSocketConfig.createSocket(rootPath, UnixSocketConfig.ALSA_SERVER_PATH),
                 ALSAClient.Options.fromKeyValueSet(audioDriverConfig)
             ));
+            ensureLegacyTmpLink(rootPath, UnixSocketConfig.ALSA_SERVER_PATH);
         }
         else if (audioDriver.equals("pulseaudio")) {
             PulseAudioComponent pulseAudioComponent = new PulseAudioComponent(UnixSocketConfig.createSocket(rootPath, UnixSocketConfig.PULSE_SERVER_PATH));
@@ -514,6 +599,22 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         envVars.clear();
         dxwrapperConfig = null;
         audioDriverConfig = null;
+    }
+
+    private void ensureLegacyTmpLink(String rootPath, String socketPath) {
+        String legacyPath = socketPath.replaceFirst("^/usr/tmp/", "/tmp/");
+        if (legacyPath.equals(socketPath)) return;
+
+        File target = new File(rootPath, socketPath);
+        File link = new File(rootPath, legacyPath);
+        File linkParent = new File(link.getParent());
+        if (!linkParent.isDirectory()) linkParent.mkdirs();
+
+        try {
+            if (link.exists()) link.delete();
+            FileUtils.symlink(target.getPath(), link.getPath());
+        }
+        catch (Exception ignored) {}
     }
 
     private void setupUI() {
@@ -978,13 +1079,14 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     private void applyGeneralPatches(Container container) {
         File rootDir = imageFs.getRootDir();
         FileUtils.delete(new File(rootDir, "/opt/apps"));
+        // Align with Ludashi/bionic: apply common prefix patches (e.g. winhandler/wfm) into the
+        // active container via the /home/xuser symlink in imagefs.
+        TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "container_pattern_common.tzst", rootDir, onExtractFileListener);
         TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "imagefs_patches.tzst", rootDir, onExtractFileListener);
         TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "pulseaudio.tzst", new File(getFilesDir(), "pulseaudio"));
-        FileUtils.copy(this, "box64/default.box64rc", new File(rootDir, "/etc/config.box64rc"));
         WineUtils.applySystemTweaks(this, wineInfo);
         container.putExtra("graphicsDriver", null);
         container.putExtra("desktopTheme", null);
-        SettingsFragment.resetBox86_64Version(this);
     }
 
     private void applyRootfsUtilsPatches() {

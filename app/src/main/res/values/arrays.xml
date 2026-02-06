@@ -71,6 +71,9 @@
         <item>0.3.6 (Default)</item>
         <item>0.4.0</item>
     </string-array>
+    <string-array name="fexcore_version_entries">
+        <item>2508 (Default)</item>
+    </string-array>
     <string-array name="dinput_mapper_type_entries">
         <item>Standard (Old Gamepads)</item>
         <item>XInput</item>

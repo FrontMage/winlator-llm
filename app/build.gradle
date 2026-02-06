@@ -4,7 +4,7 @@ android {
     compileSdk 30
 
     defaultConfig {
-        applicationId 'com.winlator'
+        applicationId 'com.winlator.cmod'
         minSdkVersion 26
         targetSdkVersion 28
         versionCode 16

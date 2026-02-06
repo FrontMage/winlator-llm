@@ -12,11 +12,11 @@ import android.widget.Spinner;
 import com.winlator.ContainerDetailFragment;
 import com.winlator.R;
 import com.winlator.ShortcutsFragment;
-import com.winlator.box86_64.Box86_64PresetManager;
 import com.winlator.container.Shortcut;
 import com.winlator.core.AppUtils;
 import com.winlator.core.EnvVars;
 import com.winlator.core.StringUtils;
+import com.winlator.fexcore.FEXCorePresetManager;
 import com.winlator.inputcontrols.ControlsProfile;
 import com.winlator.inputcontrols.InputControlsManager;
 import com.winlator.widget.EnvVarsView;
@@ -72,11 +72,11 @@ public class ShortcutSettingsDialog extends ContentDialog {
         final CheckBox cbForceFullscreen = findViewById(R.id.CBForceFullscreen);
         cbForceFullscreen.setChecked(shortcut.getExtra("forceFullscreen", "0").equals("1"));
 
-        final Spinner sBox86Preset = findViewById(R.id.SBox86Preset);
-        Box86_64PresetManager.loadSpinner("box86", sBox86Preset, shortcut.getExtra("box86Preset", shortcut.container.getBox86Preset()));
+        final Spinner sFEXCoreVersion = findViewById(R.id.SFEXCoreVersion);
+        AppUtils.setSpinnerSelectionFromIdentifier(sFEXCoreVersion, shortcut.getExtra("fexcoreVersion", shortcut.container.getFEXCoreVersion()));
 
-        final Spinner sBox64Preset = findViewById(R.id.SBox64Preset);
-        Box86_64PresetManager.loadSpinner("box64", sBox64Preset, shortcut.getExtra("box64Preset", shortcut.container.getBox64Preset()));
+        final Spinner sFEXCorePreset = findViewById(R.id.SFEXCorePreset);
+        FEXCorePresetManager.loadSpinner(sFEXCorePreset, shortcut.getExtra("fexcorePreset", shortcut.container.getFEXCorePreset()));
 
         final Spinner sControlsProfile = findViewById(R.id.SControlsProfile);
         loadControlsProfileSpinner(sControlsProfile, shortcut.getExtra("controlsProfile", "0"));
@@ -128,10 +128,10 @@ public class ShortcutSettingsDialog extends ContentDialog {
                 String envVars = envVarsView.getEnvVars();
                 shortcut.putExtra("envVars", !envVars.isEmpty() ? envVars : null);
 
-                String box86Preset = Box86_64PresetManager.getSpinnerSelectedId(sBox86Preset);
-                String box64Preset = Box86_64PresetManager.getSpinnerSelectedId(sBox64Preset);
-                shortcut.putExtra("box86Preset", !box86Preset.equals(shortcut.container.getBox86Preset()) ? box86Preset : null);
-                shortcut.putExtra("box64Preset", !box64Preset.equals(shortcut.container.getBox64Preset()) ? box64Preset : null);
+                String fexcoreVersion = StringUtils.parseIdentifier(sFEXCoreVersion.getSelectedItem());
+                String fexcorePreset = FEXCorePresetManager.getSpinnerSelectedId(sFEXCorePreset);
+                shortcut.putExtra("fexcoreVersion", !fexcoreVersion.equals(shortcut.container.getFEXCoreVersion()) ? fexcoreVersion : null);
+                shortcut.putExtra("fexcorePreset", !fexcorePreset.equals(shortcut.container.getFEXCorePreset()) ? fexcorePreset : null);
 
                 int dinputMapperType = sDInputMapperType.getSelectedItemPosition();
                 ArrayList<ControlsProfile> profiles = inputControlsManager.getProfiles(true);

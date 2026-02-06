@@ -148,8 +148,8 @@ public class ContainerManager {
         dstContainer.setShowFPS(srcContainer.isShowFPS());
         dstContainer.setWoW64Mode(srcContainer.isWoW64Mode());
         dstContainer.setStartupSelection(srcContainer.getStartupSelection());
-        dstContainer.setBox86Preset(srcContainer.getBox86Preset());
-        dstContainer.setBox64Preset(srcContainer.getBox64Preset());
+        dstContainer.setFEXCoreVersion(srcContainer.getFEXCoreVersion());
+        dstContainer.setFEXCorePreset(srcContainer.getFEXCorePreset());
         dstContainer.setDesktopTheme(srcContainer.getDesktopTheme());
         dstContainer.saveData();
 
@@ -201,6 +201,50 @@ public class ContainerManager {
         }
     }
 
+    // Align with Winlator-Ludashi/bionic container creation:
+    // After extracting the prefix skeleton, populate C:\\windows\\system32 and syswow64 from the
+    // selected Wine's built-in PE DLL sets.
+    private void extractCommonDllsFromWine(
+            WineInfo wineInfo,
+            String srcName,
+            String dstName,
+            File containerDir,
+            OnExtractFileListener onExtractFileListener
+    ) {
+        if (wineInfo == null || wineInfo.path == null || wineInfo.path.isEmpty()) return;
+
+        File srcDir = new File(wineInfo.path + "/lib/wine/" + srcName);
+        File[] srcFiles = srcDir.listFiles(file -> file != null && file.isFile());
+        if (srcFiles == null) return;
+
+        File dstDir = new File(containerDir, ".wine/drive_c/windows/" + dstName);
+        if (!dstDir.isDirectory()) dstDir.mkdirs();
+
+        for (File file : srcFiles) {
+            String dllName = file.getName();
+            File srcFile = file;
+
+            // Ludashi/bionic special-case: use the i386 iexplore.exe on arm64ec.
+            if ("iexplore.exe".equals(dllName) && wineInfo.isArm64EC() && "aarch64-windows".equals(srcName)) {
+                File fallback = new File(wineInfo.path + "/lib/wine/i386-windows/iexplore.exe");
+                if (fallback.isFile()) srcFile = fallback;
+            }
+
+            // Ludashi/bionic skips these in common extraction.
+            if ("tabtip.exe".equals(dllName) || "icu.dll".equals(dllName)) continue;
+
+            File dstFile = new File(dstDir, dllName);
+            if (dstFile.exists()) continue;
+
+            if (onExtractFileListener != null) {
+                dstFile = onExtractFileListener.onExtractFile(dstFile, 0);
+                if (dstFile == null) continue;
+            }
+
+            FileUtils.copy(srcFile, dstFile);
+        }
+    }
+
     public boolean extractContainerPatternFile(String wineVersion, File containerDir, OnExtractFileListener onExtractFileListener) {
         if (WineInfo.isMainWineVersion(wineVersion)) {
             boolean result = TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, context, "container_pattern.tzst", containerDir, onExtractFileListener);
@@ -218,12 +262,38 @@ public class ContainerManager {
 
             return result;
         }
-        else {
-            File installedWineDir = ImageFs.find(context).getInstalledWineDir();
-            WineInfo wineInfo = WineInfo.fromIdentifier(context, wineVersion);
-            String suffix = wineInfo.fullVersion()+"-"+wineInfo.getArch();
-            File file = new File(installedWineDir, "container-pattern-"+suffix+".tzst");
-            return TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, file, containerDir, onExtractFileListener);
+
+        // Non-main versions (including arm64ec): follow Ludashi/bionic extraction order.
+        WineInfo wineInfo = WineInfo.fromIdentifier(context, wineVersion);
+
+        // 1) Prefer per-wine container pattern from assets if present.
+        String containerPatternAsset = wineVersion + "_container_pattern.tzst";
+        boolean result = TarCompressorUtils.extract(
+                TarCompressorUtils.Type.ZSTD,
+                context,
+                containerPatternAsset,
+                containerDir,
+                onExtractFileListener
+        );
+
+        // 2) Fallback to prefixPack shipped inside the wine package.
+        if (!result && wineInfo != null && wineInfo.path != null && !wineInfo.path.isEmpty()) {
+            File prefixPackFile = new File(wineInfo.path, "prefixPack.txz");
+            if (prefixPackFile.isFile()) {
+                result = TarCompressorUtils.extract(TarCompressorUtils.Type.XZ, prefixPackFile, containerDir);
+            }
         }
+
+        if (result) {
+            if (wineInfo != null && wineInfo.isArm64EC()) {
+                extractCommonDllsFromWine(wineInfo, "aarch64-windows", "system32", containerDir, onExtractFileListener);
+            }
+            else {
+                extractCommonDllsFromWine(wineInfo, "x86_64-windows", "system32", containerDir, onExtractFileListener);
+            }
+            extractCommonDllsFromWine(wineInfo, "i386-windows", "syswow64", containerDir, onExtractFileListener);
+        }
+
+        return result;
     }
 }

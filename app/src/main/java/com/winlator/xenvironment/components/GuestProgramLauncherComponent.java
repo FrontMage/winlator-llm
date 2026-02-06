@@ -2,23 +2,31 @@ package com.winlator.xenvironment.components;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.net.ConnectivityManager;
+import android.net.LinkProperties;
+import android.net.Network;
 import android.os.Process;
 import android.util.Log;
 
 import androidx.preference.PreferenceManager;
 
-import com.winlator.box86_64.Box86_64Preset;
-import com.winlator.box86_64.Box86_64PresetManager;
 import com.winlator.core.Callback;
 import com.winlator.core.DefaultVersion;
 import com.winlator.core.EnvVars;
 import com.winlator.core.ProcessHelper;
 import com.winlator.core.TarCompressorUtils;
+import com.winlator.fexcore.FEXCorePreset;
+import com.winlator.fexcore.FEXCorePresetManager;
 import com.winlator.xconnector.UnixSocketConfig;
 import com.winlator.xenvironment.EnvironmentComponent;
 import com.winlator.xenvironment.ImageFs;
 
+import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.net.InetAddress;
+import java.util.List;
 
 public class GuestProgramLauncherComponent extends EnvironmentComponent {
     private static final String TAG = "GuestLauncher";
@@ -26,17 +34,18 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
     private static int pid = -1;
     private String[] bindingPaths;
     private EnvVars envVars;
-    private String box86Preset = Box86_64Preset.COMPATIBILITY;
-    private String box64Preset = Box86_64Preset.COMPATIBILITY;
+    private String fexcoreVersion = DefaultVersion.FEXCORE;
+    private String fexcorePreset = FEXCorePreset.INTERMEDIATE;
     private Callback<Integer> terminationCallback;
     private static final Object lock = new Object();
     private boolean wow64Mode = true;
+    private boolean arm64ecWine = false;
 
     @Override
     public void start() {
         synchronized (lock) {
             stop();
-            extractBox86_64Files();
+            extractFexcoreFiles();
             pid = execGuestProgram();
         }
     }
@@ -75,6 +84,10 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         this.wow64Mode = wow64Mode;
     }
 
+    public void setArm64ecWine(boolean arm64ecWine) {
+        this.arm64ecWine = arm64ecWine;
+    }
+
     public String[] getBindingPaths() {
         return bindingPaths;
     }
@@ -91,20 +104,12 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         this.envVars = envVars;
     }
 
-    public String getBox86Preset() {
-        return box86Preset;
+    public void setFEXCoreVersion(String fexcoreVersion) {
+        this.fexcoreVersion = fexcoreVersion != null ? fexcoreVersion : DefaultVersion.FEXCORE;
     }
 
-    public void setBox86Preset(String box86Preset) {
-        this.box86Preset = box86Preset;
-    }
-
-    public String getBox64Preset() {
-        return box64Preset;
-    }
-
-    public void setBox64Preset(String box64Preset) {
-        this.box64Preset = box64Preset;
+    public void setFEXCorePreset(String fexcorePreset) {
+        this.fexcorePreset = fexcorePreset != null ? fexcorePreset : FEXCorePreset.INTERMEDIATE;
     }
 
     private int execGuestProgram() {
@@ -114,26 +119,170 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         File tmpDir = environment.getTmpDir();
         String nativeLibraryDir = context.getApplicationInfo().nativeLibraryDir;
 
-        SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(context);
-        boolean enableBox86_64Logs = preferences.getBoolean("enable_box86_64_logs", true);
-
         EnvVars envVars = new EnvVars();
-        if (!wow64Mode) addBox86EnvVars(envVars, enableBox86_64Logs);
-        addBox64EnvVars(envVars, enableBox86_64Logs);
+        envVars.putAll(FEXCorePresetManager.getEnvVars(context, fexcorePreset));
         envVars.put("HOME", ImageFs.HOME_PATH);
         envVars.put("USER", ImageFs.USER);
         envVars.put("TMPDIR", "/tmp");
-        envVars.put("LC_ALL", "en_US.utf8");
         envVars.put("DISPLAY", ":0");
-        envVars.put("PATH", imageFs.getWinePath()+"/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin");
-        envVars.put("LD_LIBRARY_PATH", "/usr/lib:/usr/lib/aarch64-linux-gnu:/usr/lib/arm-linux-gnueabihf");
-        envVars.put("ANDROID_SYSVSHM_SERVER", UnixSocketConfig.SYSVSHM_SERVER_PATH);
+        String winePath = imageFs.getWinePath();
+        String rootPath = rootDir.getPath();
+        boolean isArm64ecWine = this.arm64ecWine || (winePath != null && winePath.contains("arm64ec"));
+        String winePathResolved = winePath != null ? winePath : "";
+        if (isArm64ecWine) {
+            if (!winePathResolved.isEmpty() && !winePathResolved.startsWith("/")) {
+                winePathResolved = rootPath + "/" + winePathResolved;
+            }
+        }
+        String wineBinPath = (isArm64ecWine ? winePathResolved : winePath) + "/bin";
 
-        if ((new File(imageFs.getLib64Dir(), "libandroid-sysvshm.so")).exists() ||
-            (new File(imageFs.getLib32Dir(), "libandroid-sysvshm.so")).exists()) envVars.put("LD_PRELOAD", "libandroid-sysvshm.so");
-        if (this.envVars != null) envVars.putAll(this.envVars);
+        if (isArm64ecWine) {
+            // Align with bionic build: use absolute rootfs paths and minimal bionic loader path.
+            envVars.put("HOME", rootPath + ImageFs.HOME_PATH);
+            envVars.put("USER", ImageFs.USER);
+            File usrTmpDir = new File(rootDir, "/usr/tmp");
+            if (!usrTmpDir.isDirectory()) usrTmpDir.mkdirs();
+            envVars.put("TMPDIR", usrTmpDir.getAbsolutePath());
+            envVars.put("XDG_DATA_DIRS", rootPath + "/usr/share");
+            envVars.put("XDG_CONFIG_DIRS", rootPath + "/usr/etc/xdg");
+            envVars.put("GST_PLUGIN_PATH", rootPath + "/usr/lib/gstreamer-1.0");
+            envVars.put("FONTCONFIG_PATH", rootPath + "/usr/etc/fonts");
+            envVars.put("VK_LAYER_PATH", rootPath + "/usr/share/vulkan/implicit_layer.d:" + rootPath + "/usr/share/vulkan/explicit_layer.d");
+            envVars.put("WRAPPER_LAYER_PATH", rootPath + "/usr/lib");
+            envVars.put("WRAPPER_CACHE_PATH", rootPath + "/usr/var/cache");
+            envVars.put("WINE_NO_DUPLICATE_EXPLORER", "1");
+            envVars.put("PREFIX", rootPath + "/usr");
+            envVars.put("DISPLAY", ":0");
+            envVars.put("WINE_DISABLE_FULLSCREEN_HACK", "1");
+            envVars.put("GST_PLUGIN_FEATURE_RANK", "ximagesink:3000");
+            envVars.put("ALSA_CONFIG_PATH", rootPath + "/usr/share/alsa/alsa.conf:" + rootPath + "/usr/etc/alsa/conf.d/android_aserver.conf");
+            envVars.put("ALSA_PLUGIN_DIR", rootPath + "/usr/lib/alsa-lib");
+            envVars.put("OPENSSL_CONF", rootPath + "/usr/etc/tls/openssl.cnf");
+            envVars.put("SSL_CERT_FILE", rootPath + "/usr/etc/tls/cert.pem");
+            envVars.put("SSL_CERT_DIR", rootPath + "/usr/etc/tls/certs");
+            envVars.put("WINE_X11FORCEGLX", "1");
+            envVars.put("WINE_GST_NO_GL", "1");
+            envVars.put("SteamGameId", "0");
+            envVars.put("PROTON_AUDIO_CONVERT", "0");
+            envVars.put("PROTON_VIDEO_CONVERT", "0");
+            envVars.put("PROTON_DEMUX", "0");
+
+            envVars.put("PATH", wineBinPath + ":" + rootPath + "/usr/bin");
+            envVars.put(
+                    "LD_LIBRARY_PATH",
+                    rootPath + "/usr/lib" + ":/system/lib64"
+            );
+        } else {
+            envVars.put("PATH", wineBinPath + ":/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin");
+            envVars.put("LD_LIBRARY_PATH", "/usr/lib:/usr/lib/aarch64-linux-gnu:/usr/lib/arm-linux-gnueabihf");
+        }
+        envVars.put("ANDROID_SYSVSHM_SERVER", UnixSocketConfig.SYSVSHM_SERVER_PATH);
+        envVars.put("WINE_NEW_NDIS", "1");
+
+        String dnsOverride = "";
+        ConnectivityManager connectivityManager =
+                (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (connectivityManager != null) {
+            Network activeNetwork = connectivityManager.getActiveNetwork();
+            if (activeNetwork != null) {
+                LinkProperties linkProperties = connectivityManager.getLinkProperties(activeNetwork);
+                if (linkProperties != null) {
+                    List<InetAddress> dnsServers = linkProperties.getDnsServers();
+                    if (dnsServers != null && !dnsServers.isEmpty()) {
+                        dnsOverride = dnsServers.get(0).getHostAddress();
+                    }
+                }
+            }
+        }
+        if (!dnsOverride.isEmpty()) {
+            envVars.put("ANDROID_RESOLV_DNS", dnsOverride);
+        } else {
+            envVars.put("ANDROID_RESOLV_DNS", "8.8.4.4");
+        }
+
+        String ldPreload = "";
+        File sysvshmLib = new File(imageFs.getLibDir(), "libandroid-sysvshm.so");
+        if (sysvshmLib.isFile()) {
+            ldPreload = sysvshmLib.getAbsolutePath();
+        }
+        envVars.put("LD_PRELOAD", ldPreload);
+
+        if (this.envVars != null) {
+            if (this.envVars.has("MANGOHUD")) this.envVars.remove("MANGOHUD");
+            if (this.envVars.has("MANGOHUD_CONFIG")) this.envVars.remove("MANGOHUD_CONFIG");
+            envVars.putAll(this.envVars);
+        }
+        if (isArm64ecWine) {
+            envVars.put("HOME", rootPath + ImageFs.HOME_PATH);
+            envVars.put("WINEPREFIX", rootPath + ImageFs.WINEPREFIX);
+            envVars.put("TMPDIR", new File(rootDir, "/usr/tmp").getAbsolutePath());
+            envVars.put("ANDROID_SYSVSHM_SERVER", rootPath + UnixSocketConfig.SYSVSHM_SERVER_PATH);
+            envVars.put("ANDROID_ALSA_SERVER", rootPath + UnixSocketConfig.ALSA_SERVER_PATH);
+            envVars.put("LD_PRELOAD", ldPreload);
+            envVars.put("LD_LIBRARY_PATH", rootPath + "/usr/lib" + ":/system/lib64");
+            envVars.put("PATH", wineBinPath + ":" + rootPath + "/usr/bin");
+            envVars.put("HODLL", "libwow64fex.dll");
+            envVars.remove("HODLL64");
+            if (!envVars.has("WINEDEBUG") || "-all".equals(envVars.get("WINEDEBUG"))) {
+                envVars.put("WINEDEBUG", "+loaddll,+err,+warn,+process");
+            }
+        }
 
         boolean bindSHM = envVars.get("WINEESYNC").equals("1");
+
+        if (isArm64ecWine) {
+            String command = wineBinPath + "/" + guestExecutable;
+            Log.i(TAG, "Launching guest command: " + command);
+            Log.i(TAG, "Guest env (arm64ec): " + envVars.toString());
+            File externalLogDir = new File("/storage/emulated/0/Download/Winlator");
+            if (!externalLogDir.isDirectory()) externalLogDir.mkdirs();
+            File wineLogFile = new File(externalLogDir, "wine.log");
+            final BufferedWriter[] wineLogWriter = new BufferedWriter[1];
+            final Callback<String>[] wineLogCallback = new Callback[1];
+            try {
+                // Always keep a persistent log on disk for FEX/arm64ec debugging.
+                // We intentionally append and don't rotate/version for now.
+                wineLogWriter[0] = new BufferedWriter(new FileWriter(wineLogFile, true));
+                synchronized (wineLogWriter) {
+                    wineLogWriter[0].write("----- Winlator arm64ec wine session: " + new java.util.Date().toString() + " -----");
+                    wineLogWriter[0].newLine();
+                    wineLogWriter[0].flush();
+                }
+                wineLogCallback[0] = line -> {
+                    if (wineLogWriter[0] == null) return;
+                    synchronized (wineLogWriter) {
+                        try {
+                            wineLogWriter[0].write(line);
+                            wineLogWriter[0].newLine();
+                            wineLogWriter[0].flush();
+                        }
+                        catch (IOException ignored) {}
+                    }
+                };
+                ProcessHelper.addDebugCallback(wineLogCallback[0]);
+            }
+            catch (IOException ignored) {
+                wineLogWriter[0] = null;
+            }
+            return ProcessHelper.exec(command, envVars.toStringArray(), rootDir, (status) -> {
+                synchronized (lock) {
+                    pid = -1;
+                }
+                if (wineLogCallback[0] != null) {
+                    ProcessHelper.removeDebugCallback(wineLogCallback[0]);
+                }
+                if (wineLogWriter[0] != null) {
+                    synchronized (wineLogWriter) {
+                        try {
+                            wineLogWriter[0].close();
+                        }
+                        catch (IOException ignored) {}
+                    }
+                }
+                Log.i(TAG, "Guest process terminated with status: " + status);
+                if (terminationCallback != null) terminationCallback.call(status);
+            });
+        }
 
         String command = nativeLibraryDir+"/libproot.so";
         command += " --kill-on-exit";
@@ -175,7 +324,7 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
             for (String path : bindingPaths) command += " --bind="+(new File(path)).getAbsolutePath();
         }
 
-        command += " /usr/bin/env "+envVars.toEscapedString()+" box64 "+guestExecutable;
+        command += " /usr/bin/env "+envVars.toEscapedString()+" "+guestExecutable;
         Log.i(TAG, "Launching guest command: " + command);
 
         envVars.clear();
@@ -192,83 +341,32 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         });
     }
 
-    private void extractBox86_64Files() {
+    private void extractFexcoreFiles() {
         ImageFs imageFs = environment.getImageFs();
         Context context = environment.getContext();
         SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(context);
-        String box86Version = preferences.getString("box86_version", DefaultVersion.BOX86);
-        String box64Version = preferences.getString("box64_version", DefaultVersion.BOX64);
-        String currentBox86Version = preferences.getString("current_box86_version", "");
-        String currentBox64Version = preferences.getString("current_box64_version", "");
-        File rootDir = imageFs.getRootDir();
+        String currentFexcoreVersion = preferences.getString("current_fexcore_version", "");
+        String requestedVersion = fexcoreVersion != null ? fexcoreVersion : DefaultVersion.FEXCORE;
+        File system32Dir = new File(imageFs.getRootDir(), ImageFs.WINEPREFIX + "/drive_c/windows/system32");
+        if (!system32Dir.isDirectory() && !system32Dir.mkdirs()) return;
 
-        if (wow64Mode) {
-            File box86File = new File(rootDir, "/usr/local/bin/box86");
-            if (box86File.isFile()) {
-                box86File.delete();
-                preferences.edit().putString("current_box86_version", "").apply();
-            }
-        }
-        else if (!box86Version.equals(currentBox86Version)) {
-            TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, context, "box86_64/box86-"+box86Version+".tzst", rootDir);
-            preferences.edit().putString("current_box86_version", box86Version).apply();
-        }
+        File wow64Dll = new File(system32Dir, "libwow64fex.dll");
+        File arm64ecDll = new File(system32Dir, "libarm64ecfex.dll");
+        boolean needsExtract = !requestedVersion.equals(currentFexcoreVersion)
+                || !wow64Dll.isFile()
+                || !arm64ecDll.isFile();
 
-        if (!box64Version.equals(currentBox64Version)) {
-            TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, context, "box86_64/box64-"+box64Version+".tzst", rootDir);
-            preferences.edit().putString("current_box64_version", box64Version).apply();
+        if (needsExtract) {
+            TarCompressorUtils.extract(
+                    TarCompressorUtils.Type.ZSTD,
+                    context,
+                    "fexcore/fexcore-" + requestedVersion + ".tzst",
+                    system32Dir
+            );
+            preferences.edit().putString("current_fexcore_version", requestedVersion).apply();
         }
     }
 
-    private void addBox86EnvVars(EnvVars envVars, boolean enableLogs) {
-        envVars.put("BOX86_NOBANNER", ProcessHelper.PRINT_DEBUG && enableLogs ? "0" : "1");
-        envVars.put("BOX86_DYNAREC", "1");
-        envVars.put("BOX86_DYNAREC_MISSING", "1");
-
-        if (enableLogs) {
-            envVars.put("BOX86_LOG", "0");
-        }
-
-        envVars.putAll(Box86_64PresetManager.getEnvVars("box86", environment.getContext(), box86Preset));
-        envVars.put("BOX86_X11GLX", "1");
-        envVars.put("BOX86_NORCFILES", "1");
-    }
-
-    private void addBox64EnvVars(EnvVars envVars, boolean enableLogs) {
-        envVars.put("BOX64_NOBANNER", ProcessHelper.PRINT_DEBUG && enableLogs ? "0" : "1");
-        if (wow64Mode) envVars.put("BOX64_MMAP32", "1");
-        envVars.put("BOX64_DYNAREC_MISSING", "1");
-
-        if (enableLogs) {
-            envVars.put("BOX64_LOG", "0");
-        }
-
-        envVars.putAll(Box86_64PresetManager.getEnvVars("box64", environment.getContext(), box64Preset));
-        applyBox64Overrides(envVars);
-        envVars.put("BOX64_X11GLX", "1");
-        envVars.put("BOX64_NORCFILES", "1");
-    }
-
-    private void applyBox64Overrides(EnvVars envVars) {
-        envVars.put("BOX64_DYNAREC", "1");
-        envVars.put("BOX64_DYNAREC_SAFEFLAGS", "2");
-        envVars.put("BOX64_DYNAREC_FASTNAN", "1");
-        envVars.put("BOX64_DYNAREC_FASTROUND", "0");
-        envVars.put("BOX64_DYNAREC_X87DOUBLE", "1");
-        envVars.put("BOX64_DYNAREC_BIGBLOCK", "2");
-        envVars.put("BOX64_DYNAREC_STRONGMEM", "0");
-        envVars.put("BOX64_DYNAREC_FORWARD", "128");
-        envVars.put("BOX64_DYNAREC_CALLRET", "0");
-        envVars.put("BOX64_DYNAREC_WAIT", "1");
-        envVars.put("BOX64_DYNAREC_NATIVEFLAGS", "0");
-        envVars.put("BOX64_DYNAREC_WEAKBARRIER", "2");
-        envVars.put("BOX64_DLSYM_ERROR", "1");
-        envVars.put("BOX64_SHOWSEGV", "1");
-        envVars.put("BOX64_UNITYPLAYER", "0");
-
-        File hostRootfs = new File(environment.getContext().getFilesDir(), "rootfs");
-        envVars.put("BOX64_RCFILE", new File(hostRootfs, "etc/config.box64rc").getPath());
-    }
 
     public void suspendProcess() {
         synchronized (lock) {

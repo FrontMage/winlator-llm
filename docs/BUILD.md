@@ -124,3 +124,15 @@ env JAVA_HOME=/Library/Java/JavaVirtualMachines/openjdk-17.jdk/Contents/Home ./g
 export JAVA_HOME=$(/usr/libexec/java_home -v 17)
 ./gradlew :app:assembleDebug
 ```
+
+## UTM Ubuntu（ARM）SSH 连接信息
+
+在 macOS 本机通过端口转发连接 UTM Ubuntu（ARM）：
+
+```bash
+sshpass -p ubuntu ssh -p 2222 ubuntu@127.0.0.1
+```
+
+共享目录挂载：
+
+- TurtleWoW 已挂载到 Ubuntu 内的：`/mnt/macos`

@@ -6,7 +6,6 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.winlator.MainActivity;
 import com.winlator.R;
-import com.winlator.SettingsFragment;
 import com.winlator.container.Container;
 import com.winlator.container.ContainerManager;
 import com.winlator.core.AppUtils;
@@ -27,6 +26,9 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public abstract class ImageFsInstaller {
     public static final byte LATEST_VERSION = 8;
+    private static final String PREINSTALLED_WINE_ASSET = "preinstall/proton-10-arm64ec.wcp.xz";
+    private static final String PREINSTALLED_WINE_VERSION = "10.0";
+    private static final String PREINSTALLED_WINE_ARCH = "arm64ec";
 
     private static void resetContainerImgVersions(Context context) {
         ContainerManager manager = new ContainerManager(context);
@@ -47,8 +49,6 @@ public abstract class ImageFsInstaller {
         ImageFs imageFs = ImageFs.find(activity);
         final File rootDir = imageFs.getRootDir();
 
-        SettingsFragment.resetBox86_64Version(activity);
-
         final DownloadProgressDialog dialog = new DownloadProgressDialog(activity);
         dialog.show(R.string.installing_system_files);
         Executors.newSingleThreadExecutor().execute(() -> {
@@ -67,6 +67,7 @@ public abstract class ImageFsInstaller {
             });
 
             if (success) {
+                installPreinstalledWine(activity, imageFs);
                 imageFs.createImgVersionFile(LATEST_VERSION);
                 resetContainerImgVersions(activity);
             }
@@ -76,16 +77,33 @@ public abstract class ImageFsInstaller {
         });
     }
 
+    private static void installPreinstalledWine(Context context, ImageFs imageFs) {
+        File installedWineDir = imageFs.getInstalledWineDir();
+        String identifier = "wine-" + PREINSTALLED_WINE_VERSION + "-" + PREINSTALLED_WINE_ARCH;
+        File wineDir = new File(installedWineDir, identifier);
+        if (wineDir.isDirectory()) return;
+
+        if (!installedWineDir.isDirectory()) installedWineDir.mkdirs();
+        boolean extracted = TarCompressorUtils.extract(TarCompressorUtils.Type.XZ, context, PREINSTALLED_WINE_ASSET, wineDir);
+        if (!extracted) return;
+    }
+
     public static void installIfNeeded(final MainActivity activity) {
         ImageFs imageFs = ImageFs.find(activity);
-        if (!imageFs.isValid() || imageFs.getVersion() < LATEST_VERSION) installFromAssets(activity);
+        if (!imageFs.isValid() || imageFs.getVersion() < LATEST_VERSION) {
+            installFromAssets(activity);
+        }
+        else {
+            installPreinstalledWine(activity, imageFs);
+        }
     }
 
     private static void clearOptDir(File optDir) {
         File[] files = optDir.listFiles();
         if (files != null) {
             for (File file : files) {
-                if (file.getName().equals("installed-wine")) continue;
+                String name = file.getName();
+                if (name.startsWith("wine-") || name.startsWith("proton-") || name.equals("preinstall")) continue;
                 FileUtils.delete(file);
             }
         }

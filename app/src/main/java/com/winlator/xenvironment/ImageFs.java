@@ -5,6 +5,7 @@ import android.content.Context;
 import androidx.annotation.NonNull;
 
 import com.winlator.core.FileUtils;
+import com.winlator.core.WineInfo;
 
 import java.io.File;
 import java.io.IOException;
@@ -17,10 +18,11 @@ public class ImageFs {
     public static final String CONFIG_PATH = "/home/"+USER+"/.config";
     public static final String WINEPREFIX = "/home/"+USER+"/.wine";
     private final File rootDir;
-    private String winePath = "/opt/wine";
+    private String winePath;
 
     private ImageFs(File rootDir) {
         this.rootDir = rootDir;
+        this.winePath = new File(rootDir, "/opt/" + WineInfo.MAIN_WINE_VERSION.identifier()).getPath();
     }
 
     public static ImageFs find(Context context) {
@@ -75,7 +77,7 @@ public class ImageFs {
     }
 
     public void setWinePath(String winePath) {
-        this.winePath = FileUtils.toRelativePath(rootDir.getPath(), winePath);
+        this.winePath = winePath;
     }
 
     public File getConfigDir() {
@@ -87,11 +89,11 @@ public class ImageFs {
     }
 
     public File getInstalledWineDir() {
-        return new File(rootDir, "/opt/installed-wine");
+        return new File(rootDir, "/opt");
     }
 
     public File getTmpDir() {
-        return new File(rootDir, "/tmp");
+        return new File(rootDir, "/usr/tmp");
     }
 
     public File getLib32Dir() {

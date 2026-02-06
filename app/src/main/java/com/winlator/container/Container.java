@@ -2,12 +2,12 @@ package com.winlator.container;
 
 import android.os.Environment;
 
-import com.winlator.box86_64.Box86_64Preset;
 import com.winlator.core.EnvVars;
 import com.winlator.core.FileUtils;
 import com.winlator.core.KeyValueSet;
 import com.winlator.core.WineInfo;
 import com.winlator.core.WineThemeManager;
+import com.winlator.fexcore.FEXCorePreset;
 import com.winlator.xenvironment.ImageFs;
 
 import org.json.JSONException;
@@ -25,6 +25,7 @@ public class Container {
     public static final String DEFAULT_WINCOMPONENTS = "direct3d=1,directsound=1,directmusic=0,directshow=0,directplay=0,vcrun2010=1,wmdecoder=1,rsaenh=0,cryptbase=0";
     public static final String FALLBACK_WINCOMPONENTS = "direct3d=0,directsound=0,directmusic=0,directshow=0,directplay=0,vcrun2010=0,wmdecoder=0,rsaenh=0,cryptbase=0";
     public static final String DEFAULT_DRIVES = "D:"+Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)+"E:/data/data/com.winlator/storage";
+    public static final String DEFAULT_FEXCORE_PRESET = FEXCorePreset.INTERMEDIATE;
     public static final byte STARTUP_SELECTION_NORMAL = 0;
     public static final byte STARTUP_SELECTION_ESSENTIAL = 1;
     public static final byte STARTUP_SELECTION_AGGRESSIVE = 2;
@@ -39,15 +40,15 @@ public class Container {
     private String wincomponents = DEFAULT_WINCOMPONENTS;
     private String audioDriver = DEFAULT_AUDIO_DRIVER;
     private String drives = DEFAULT_DRIVES;
-    private String wineVersion = WineInfo.MAIN_WINE_VERSION.identifier();
+    private String wineVersion = "wine-"+com.winlator.core.DefaultVersion.ARM64EC_WINE+"-arm64ec";
     private boolean showFPS;
     private boolean wow64Mode = true;
     private byte startupSelection = STARTUP_SELECTION_ESSENTIAL;
     private String cpuList;
     private String cpuListWoW64;
     private String desktopTheme = WineThemeManager.DEFAULT_DESKTOP_THEME;
-    private String box86Preset = Box86_64Preset.COMPATIBILITY;
-    private String box64Preset = Box86_64Preset.COMPATIBILITY;
+    private String fexcoreVersion = com.winlator.core.DefaultVersion.FEXCORE;
+    private String fexcorePreset = DEFAULT_FEXCORE_PRESET;
     private File rootDir;
     private JSONObject extraData;
 
@@ -176,20 +177,20 @@ public class Container {
         this.cpuListWoW64 = cpuListWoW64 != null && !cpuListWoW64.isEmpty() ? cpuListWoW64 : null;
     }
 
-    public String getBox86Preset() {
-        return box86Preset;
+    public String getFEXCoreVersion() {
+        return fexcoreVersion;
     }
 
-    public void setBox86Preset(String box86Preset) {
-        this.box86Preset = box86Preset;
+    public void setFEXCoreVersion(String fexcoreVersion) {
+        this.fexcoreVersion = fexcoreVersion != null ? fexcoreVersion : com.winlator.core.DefaultVersion.FEXCORE;
     }
 
-    public String getBox64Preset() {
-        return box64Preset;
+    public String getFEXCorePreset() {
+        return fexcorePreset;
     }
 
-    public void setBox64Preset(String box64Preset) {
-        this.box64Preset = box64Preset;
+    public void setFEXCorePreset(String fexcorePreset) {
+        this.fexcorePreset = fexcorePreset != null ? fexcorePreset : DEFAULT_FEXCORE_PRESET;
     }
 
     public File getRootDir() {
@@ -302,8 +303,8 @@ public class Container {
             data.put("showFPS", showFPS);
             data.put("wow64Mode", wow64Mode);
             data.put("startupSelection", startupSelection);
-            data.put("box86Preset", box86Preset);
-            data.put("box64Preset", box64Preset);
+            data.put("fexcoreVersion", fexcoreVersion);
+            data.put("fexcorePreset", fexcorePreset);
             data.put("desktopTheme", desktopTheme);
             data.put("extraData", extraData);
 
@@ -369,11 +370,11 @@ public class Container {
                 case "wineVersion" :
                     setWineVersion(data.getString(key));
                     break;
-                case "box86Preset" :
-                    setBox86Preset(data.getString(key));
+                case "fexcoreVersion" :
+                    setFEXCoreVersion(data.getString(key));
                     break;
-                case "box64Preset" :
-                    setBox64Preset(data.getString(key));
+                case "fexcorePreset" :
+                    setFEXCorePreset(data.getString(key));
                     break;
                 case "audioDriver" :
                     setAudioDriver(data.getString(key));

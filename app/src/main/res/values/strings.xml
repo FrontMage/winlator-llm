@@ -136,6 +136,9 @@
     <string name="estimated_used_space">Estimated Used Space</string>
     <string name="advanced">Advanced</string>
     <string name="box86_box64">Box86/Box64</string>
+    <string name="fexcore">FEXCore</string>
+    <string name="fexcore_version">FEXCore version</string>
+    <string name="fexcore_preset">FEXCore preset</string>
     <string name="system">System</string>
     <string name="box86_preset">Box86 Preset</string>
     <string name="box64_preset">Box64 Preset</string>

@@ -15,7 +15,7 @@ Usage:
   scripts/build-apk-install.sh [-f|--force] [--reset-gradle] [--serial <id>]
 
 Options:
-  -f, --force     Uninstall the app (com.winlator) before installing.
+  -f, --force     Uninstall existing app(s) before installing.
   --reset-gradle   Clear Gradle native and wrapper caches (~/.gradle) before build.
   --serial <id>    adb device serial to target (adb -s <id>).
 USAGE
@@ -73,15 +73,24 @@ if [[ ! -f "$APK_PATH" ]]; then
   exit 1
 fi
 
-if [[ -n "$ADB_SERIAL" ]]; then
-  if [[ "$FORCE_INSTALL" -eq 1 ]]; then
-    "$ADB_BIN" -s "$ADB_SERIAL" uninstall com.winlator || true
+uninstall_packages() {
+  local adb_prefix=("$ADB_BIN")
+  if [[ -n "$ADB_SERIAL" ]]; then
+    adb_prefix+=("-s" "$ADB_SERIAL")
   fi
+
+  for pkg in com.winlator com.winlator.cmod; do
+    "${adb_prefix[@]}" uninstall "$pkg" || true
+  done
+}
+
+if [[ "$FORCE_INSTALL" -eq 1 ]]; then
+  uninstall_packages
+fi
+
+if [[ -n "$ADB_SERIAL" ]]; then
   "$ADB_BIN" -s "$ADB_SERIAL" install -r "$APK_PATH"
 else
-  if [[ "$FORCE_INSTALL" -eq 1 ]]; then
-    "$ADB_BIN" uninstall com.winlator || true
-  fi
   "$ADB_BIN" install -r "$APK_PATH"
 fi
 

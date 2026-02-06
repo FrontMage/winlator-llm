@@ -264,28 +264,29 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="@string/box86_preset" />
+                        android:text="@string/fexcore_version" />
 
                     <Spinner
                         style="@style/ComboBox"
-                        android:id="@+id/SBox86Preset"
-                        android:layout_width="match_parent" />
+                        android:id="@+id/SFEXCoreVersion"
+                        android:layout_width="match_parent"
+                        android:entries="@array/fexcore_version_entries" />
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="@string/box64_preset" />
+                        android:text="@string/fexcore_preset" />
 
                     <Spinner
                         style="@style/ComboBox"
-                        android:id="@+id/SBox64Preset"
+                        android:id="@+id/SFEXCorePreset"
                         android:layout_width="match_parent" />
                 </LinearLayout>
 
                 <TextView
                     style="@style/FieldSetLabel"
                     android:background="#ffffff"
-                    android:text="@string/box86_box64" />
+                    android:text="@string/fexcore" />
             </FrameLayout>
 
             <FrameLayout
