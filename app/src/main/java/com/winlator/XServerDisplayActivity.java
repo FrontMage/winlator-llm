@@ -823,8 +823,18 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         }
 
         if (graphicsDriver.equals("turnip")) {
+            // Force Vulkan loader to use our shipped ICD (Mesa Turnip). On many Android devices the
+            // system Vulkan driver may expose a lower Vulkan version than DXVK requires, causing
+            // instant failure without a clear Wine-side error.
+            if (!envVars.has("VK_ICD_FILENAMES")) {
+                envVars.put("VK_ICD_FILENAMES", rootDir.getPath() + "/usr/share/vulkan/icd.d/freedreno_icd.aarch64.json");
+            }
+
             if (dxwrapper.equals("dxvk")) {
                 DXVKConfigDialog.setEnvVars(this, dxwrapperConfig, envVars);
+                // Make DXVK errors discoverable without digging through Wine traces.
+                if (!envVars.has("DXVK_LOG_PATH")) envVars.put("DXVK_LOG_PATH", "D:\\\\Winlator");
+                if (!envVars.has("DXVK_LOG_LEVEL")) envVars.put("DXVK_LOG_LEVEL", "info");
             }
             else if (dxwrapper.equals("vkd3d")) envVars.put("VKD3D_FEATURE_LEVEL", "12_1");
 
