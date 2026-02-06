@@ -227,6 +227,15 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         xServer.setWinHandler(winHandler);
         boolean[] winStarted = {false};
         xServer.windowManager.addOnWindowModificationListener(new WindowManager.OnWindowModificationListener() {
+            private boolean shouldDismissStartingUp(Window window) {
+                if (window == null) return false;
+                if (!window.attributes.isMapped()) return false;
+                // Root window has no parent; don't use it as a "session is ready" signal.
+                if (window.getParent() == null) return false;
+                if (!window.isInputOutput()) return false;
+                return window.getWidth() > 1 && window.getHeight() > 1;
+            }
+
             @Override
             public void onUpdateWindowContent(Window window) {
                 if (!winStarted[0] && window.isApplicationWindow()) {
@@ -245,6 +254,21 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
             @Override
             public void onMapWindow(Window window) {
+                // Some apps (incl. wfm/winhandler flow) may map a visible window before it starts
+                // producing content updates or before WM_HINTS/WM_NAME are fully set. If we only
+                // dismiss the "Starting up..." dialog on onUpdateWindowContent + isApplicationWindow(),
+                // we can get stuck forever. Use a simpler heuristic on map as a fallback.
+                if (!winStarted[0] && shouldDismissStartingUp(window)) {
+                    Log.i(TAG_GUEST_DEBUG, "Starting up dismissed by mapped window: id=" + window.id
+                            + " class=" + window.getClassName()
+                            + " name=" + window.getName()
+                            + " pid=" + window.getProcessId()
+                            + " w=" + window.getWidth()
+                            + " h=" + window.getHeight());
+                    xServerView.getRenderer().setCursorVisible(true);
+                    preloaderDialog.closeOnUiThread();
+                    winStarted[0] = true;
+                }
                 assignTaskAffinity(window);
             }
 
