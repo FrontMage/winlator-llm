@@ -480,25 +480,30 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         File windowsDir = new File(containerDir, ".wine/drive_c/windows");
         File system32Dir = new File(windowsDir, "system32");
         File syswow64Dir = new File(windowsDir, "syswow64");
+        File system32DriversDir = new File(system32Dir, "drivers");
 
-        // Fast-path: if both key DLLs exist, assume the prefix is populated.
+        // Fast-path: if both key DLLs exist and core drivers match, assume the prefix is populated.
         boolean haveSystem32Kernel32 = new File(system32Dir, "kernel32.dll").isFile();
         boolean haveSyswow64Kernel32 = new File(syswow64Dir, "kernel32.dll").isFile();
-        if (haveSystem32Kernel32 && haveSyswow64Kernel32) return;
+        boolean haveMountMgrDriver = isPrefixDriverUpToDate(wineInfo, "mountmgr.sys", system32DriversDir);
+        if (haveSystem32Kernel32 && haveSyswow64Kernel32 && haveMountMgrDriver) return;
 
         int copied = 0;
         if (wineInfo.isArm64EC()) {
             copied += copyWineBuiltinsIfMissing(wineInfo, "aarch64-windows", system32Dir);
+            copied += syncWineDrivers(wineInfo, "aarch64-windows", system32DriversDir);
         }
         else {
             copied += copyWineBuiltinsIfMissing(wineInfo, "x86_64-windows", system32Dir);
+            copied += syncWineDrivers(wineInfo, "x86_64-windows", system32DriversDir);
         }
         copied += copyWineBuiltinsIfMissing(wineInfo, "i386-windows", syswow64Dir);
 
         Log.i(TAG_GUEST_DEBUG, "Prefix builtins repair: copied=" + copied +
                 " wine=" + wineInfo.identifier() +
                 " system32_kernel32=" + new File(system32Dir, "kernel32.dll").isFile() +
-                " syswow64_kernel32=" + new File(syswow64Dir, "kernel32.dll").isFile());
+                " syswow64_kernel32=" + new File(syswow64Dir, "kernel32.dll").isFile() +
+                " mountmgr_ok=" + isPrefixDriverUpToDate(wineInfo, "mountmgr.sys", system32DriversDir));
     }
 
     private int copyWineBuiltinsIfMissing(WineInfo wineInfo, String srcName, File dstDir) {
@@ -534,6 +539,35 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             if (FileUtils.copy(srcFile, dstFile)) copied++;
         }
 
+        return copied;
+    }
+
+    private boolean isPrefixDriverUpToDate(WineInfo wineInfo, String driverName, File dstDriversDir) {
+        if (wineInfo == null || wineInfo.path == null || wineInfo.path.isEmpty()) return false;
+        if (driverName == null || driverName.isEmpty()) return false;
+
+        String srcName = wineInfo.isArm64EC() ? "aarch64-windows" : "x86_64-windows";
+        File srcFile = new File(wineInfo.path + "/lib/wine/" + srcName + "/" + driverName);
+        File dstFile = new File(dstDriversDir, driverName);
+        if (!srcFile.isFile() || !dstFile.isFile()) return false;
+        return srcFile.length() == dstFile.length();
+    }
+
+    private int syncWineDrivers(WineInfo wineInfo, String srcName, File dstDriversDir) {
+        File srcDir = new File(wineInfo.path + "/lib/wine/" + srcName);
+        File[] srcFiles = srcDir.listFiles(file -> file != null && file.isFile() && file.getName().endsWith(".sys"));
+        if (srcFiles == null || srcFiles.length == 0) return 0;
+
+        if (!dstDriversDir.isDirectory() && !dstDriversDir.mkdirs()) return 0;
+
+        int copied = 0;
+        for (File srcFile : srcFiles) {
+            String name = srcFile.getName();
+            File dstFile = new File(dstDriversDir, name);
+            // If a driver exists but doesn't match the selected Wine build, overwrite it.
+            if (dstFile.isFile() && dstFile.length() == srcFile.length()) continue;
+            if (FileUtils.copy(srcFile, dstFile)) copied++;
+        }
         return copied;
     }
 
