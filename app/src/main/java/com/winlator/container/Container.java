@@ -24,7 +24,9 @@ public class Container {
     public static final String DEFAULT_DXWRAPPER = "dxvk";
     public static final String DEFAULT_WINCOMPONENTS = "direct3d=1,directsound=1,directmusic=0,directshow=0,directplay=0,vcrun2010=1,wmdecoder=1,rsaenh=0,cryptbase=0";
     public static final String FALLBACK_WINCOMPONENTS = "direct3d=0,directsound=0,directmusic=0,directshow=0,directplay=0,vcrun2010=0,wmdecoder=0,rsaenh=0,cryptbase=0";
-    public static final String DEFAULT_DRIVES = "D:"+Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)+"E:/data/data/com.winlator/storage";
+    // For our current package id (com.winlator.cmod), use an app-private writable storage root.
+    // External downloads remain on D: (requires storage permission on newer Android versions).
+    public static final String DEFAULT_DRIVES = "D:"+Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)+"E:/data/data/com.winlator.cmod/storage";
     public static final String DEFAULT_FEXCORE_PRESET = FEXCorePreset.INTERMEDIATE;
     public static final byte STARTUP_SELECTION_NORMAL = 0;
     public static final byte STARTUP_SELECTION_ESSENTIAL = 1;

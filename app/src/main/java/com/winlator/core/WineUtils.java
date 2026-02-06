@@ -28,12 +28,21 @@ public abstract class WineUtils {
         if (files != null) for (File file : files) if (file.getName().matches("[a-z]:")) file.delete();
 
         FileUtils.symlink("../drive_c", dosdevicesPath+"/c:");
-        FileUtils.symlink("/", dosdevicesPath+"/z:");
+        // Align with bionic/Ludashi: map Z: to the imagefs root (not the Android host "/").
+        // This keeps paths consistent with the original container layout and avoids leaking the
+        // full Android filesystem into the guest.
+        FileUtils.symlink(container.getRootDir().getPath() + "/../..", dosdevicesPath+"/z:");
 
         for (String[] drive : container.drivesIterator()) {
-            File linkTarget = new File(drive[1]);
+            String drivePath = drive[1];
+            // Migration: older builds used com.winlator in the default E: path.
+            if ("/data/data/com.winlator/storage".equals(drivePath)) {
+                drivePath = "/data/data/com.winlator.cmod/storage";
+            }
+
+            File linkTarget = new File(drivePath);
             String path = linkTarget.getAbsolutePath();
-            if (!linkTarget.isDirectory() && path.endsWith("/com.winlator/storage")) {
+            if (!linkTarget.isDirectory() && (path.endsWith("/com.winlator/storage") || path.endsWith("/com.winlator.cmod/storage"))) {
                 linkTarget.mkdirs();
                 FileUtils.chmod(linkTarget, 0771);
             }
