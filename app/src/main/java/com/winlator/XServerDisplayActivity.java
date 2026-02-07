@@ -832,9 +832,21 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
             if (dxwrapper.equals("dxvk")) {
                 DXVKConfigDialog.setEnvVars(this, dxwrapperConfig, envVars);
-                // Make DXVK errors discoverable without digging through Wine traces.
-                if (!envVars.has("DXVK_LOG_PATH")) envVars.put("DXVK_LOG_PATH", "D:\\\\Winlator");
-                if (!envVars.has("DXVK_LOG_LEVEL")) envVars.put("DXVK_LOG_LEVEL", "info");
+                // Always persist DXVK logs for debugging (FEX-only mod).
+                //
+                // DXVK reads DXVK_LOG_PATH from the Wine process environment. A Unix-style absolute
+                // path is accepted by Wine and is easiest to inspect on-device.
+                String dxvkLogPath = envVars.get("DXVK_LOG_PATH");
+                if (dxvkLogPath == null || dxvkLogPath.isEmpty() || "D:\\\\Winlator".equals(dxvkLogPath)) {
+                    envVars.put("DXVK_LOG_PATH", "/storage/emulated/0/Download/Winlator");
+                }
+
+                // Some container configs default to "none", which disables DXVK logs entirely.
+                // Treat that as "unset" and bump to info so failures produce a log file.
+                String dxvkLogLevel = envVars.get("DXVK_LOG_LEVEL");
+                if (dxvkLogLevel == null || dxvkLogLevel.isEmpty() || "none".equalsIgnoreCase(dxvkLogLevel)) {
+                    envVars.put("DXVK_LOG_LEVEL", "info");
+                }
             }
             else if (dxwrapper.equals("vkd3d")) envVars.put("VKD3D_FEATURE_LEVEL", "12_1");
 

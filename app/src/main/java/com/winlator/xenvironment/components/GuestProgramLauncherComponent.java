@@ -226,6 +226,15 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
             if (!envVars.has("WINEDEBUG") || "-all".equals(envVars.get("WINEDEBUG"))) {
                 envVars.put("WINEDEBUG", "+loaddll,+err,+warn,+process");
             }
+
+            // When DXVK is enabled, add Vulkan channel so wine.log contains loader/instance errors.
+            // This is low-noise compared to full traces and is extremely helpful for crash triage.
+            if (envVars.has("DXVK_LOG_LEVEL") || envVars.has("DXVK_LOG_PATH")) {
+                String wineDebug = envVars.get("WINEDEBUG");
+                if (wineDebug != null && !wineDebug.contains("vulkan")) {
+                    envVars.put("WINEDEBUG", wineDebug + ",+vulkan");
+                }
+            }
         }
 
         boolean bindSHM = envVars.get("WINEESYNC").equals("1");
@@ -245,6 +254,8 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
                 wineLogWriter[0] = new BufferedWriter(new FileWriter(wineLogFile, true));
                 synchronized (wineLogWriter) {
                     wineLogWriter[0].write("----- Winlator arm64ec wine session: " + new java.util.Date().toString() + " -----");
+                    wineLogWriter[0].newLine();
+                    wineLogWriter[0].write("ENV: " + envVars.toString());
                     wineLogWriter[0].newLine();
                     wineLogWriter[0].flush();
                 }
