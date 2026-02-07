@@ -823,17 +823,13 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         }
 
         if (graphicsDriver.equals("turnip")) {
-            // Some upstream Mesa bundles ship an ICD JSON with a hard-coded app path
-            // (e.g. /data/data/com.winlator/...). Rewrite it to our actual extracted rootfs
-            // so the Vulkan loader can load the driver and expose VK_KHR_surface.
-            ensureTurnipIcdJson(rootDir);
-
-            // Force Vulkan loader to use our shipped ICD (Mesa Turnip). On many Android devices the
-            // system Vulkan driver may expose a lower Vulkan version than DXVK requires, causing
-            // instant failure without a clear Wine-side error.
-            if (!envVars.has("VK_ICD_FILENAMES")) {
-                envVars.put("VK_ICD_FILENAMES", rootDir.getPath() + "/usr/share/vulkan/icd.d/freedreno_icd.aarch64.json");
-            }
+            // Align with Winlator-Ludashi/bionic: use the Vulkan wrapper ICD.
+            //
+            // Without the wrapper, Wine/DXVK may fail very early with:
+            //   "Required Vulkan extension VK_KHR_surface not supported"
+            // because the host loader ends up with no usable WSI path.
+            ensureVulkanWrapperInstalled(rootDir);
+            envVars.put("VK_ICD_FILENAMES", rootDir.getPath() + "/usr/share/vulkan/icd.d/wrapper_icd.aarch64.json");
 
             if (dxwrapper.equals("dxvk")) {
                 DXVKConfigDialog.setEnvVars(this, dxwrapperConfig, envVars);
@@ -854,6 +850,18 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 }
             }
             else if (dxwrapper.equals("vkd3d")) envVars.put("VKD3D_FEATURE_LEVEL", "12_1");
+
+            // Default wrapper+adrenotools to our shipped Mesa driver set unless container overrides.
+            // (The wrapper ICD itself is in usr/lib and is loaded by VK_ICD_FILENAMES.)
+            if (!envVars.has("ADRENOTOOLS_DRIVER_PATH")) {
+                envVars.put("ADRENOTOOLS_DRIVER_PATH", rootDir.getPath() + "/usr/lib/");
+            }
+            if (!envVars.has("ADRENOTOOLS_HOOKS_PATH")) {
+                envVars.put("ADRENOTOOLS_HOOKS_PATH", rootDir.getPath() + "/usr/lib");
+            }
+            if (!envVars.has("ADRENOTOOLS_DRIVER_NAME")) {
+                envVars.put("ADRENOTOOLS_DRIVER_NAME", "libvulkan_freedreno.so");
+            }
 
             envVars.put("GALLIUM_DRIVER", "zink");
             envVars.put("ZINK_CONTEXT_THREADED", "1");
@@ -877,9 +885,9 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
             if (changed) {
                 GeneralComponents.extractFile(GeneralComponents.Type.TURNIP, this, DefaultVersion.TURNIP, DefaultVersion.TURNIP);
+                // Wrapper + extra libs required for DXVK/Vulkan WSI; re-extract when driver changes.
+                ensureVulkanWrapperInstalled(rootDir);
                 TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "graphics_driver/zink-"+DefaultVersion.ZINK+".tzst", rootDir);
-                // Extraction may have recreated/overwritten the ICD JSON, so patch again.
-                ensureTurnipIcdJson(rootDir);
             }
         }
         else if (graphicsDriver.equals("virgl")) {
@@ -912,6 +920,29 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             FileUtils.writeString(icdFile, json.toString(4));
         }
         catch (JSONException ignored) {}
+    }
+
+    private void ensureVulkanWrapperInstalled(File rootDir) {
+        if (rootDir == null) return;
+
+        File wrapperLib = new File(rootDir, "usr/lib/libvulkan_wrapper.so");
+        File wrapperIcd = new File(rootDir, "usr/share/vulkan/icd.d/wrapper_icd.aarch64.json");
+        File freedrenoLib = new File(rootDir, "usr/lib/libvulkan_freedreno.so");
+        File glapiLib = new File(rootDir, "usr/lib/libglapi.so.0.0.0");
+        File glLib = new File(rootDir, "usr/lib/libGL.so.1.5.0");
+
+        // If wrapper is missing (or a partial extract happened), re-extract the bundle.
+        if (!wrapperLib.isFile() || !wrapperIcd.isFile()) {
+            TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "graphics_driver/wrapper.tzst", rootDir);
+        }
+
+        // Ensure the Mesa driver + GL helper libs exist (used by wrapper + zink).
+        if (!freedrenoLib.isFile() || !glapiLib.isFile() || !glLib.isFile()) {
+            TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "graphics_driver/extra_libs.tzst", rootDir);
+        }
+
+        // Keep freedreno ICD JSON consistent in case something still references it.
+        ensureTurnipIcdJson(rootDir);
     }
 
     private void showTouchpadHelpDialog() {
