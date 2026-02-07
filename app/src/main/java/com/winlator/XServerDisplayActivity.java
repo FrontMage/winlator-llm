@@ -30,6 +30,7 @@ import com.winlator.container.Shortcut;
 import com.winlator.contentdialog.ContentDialog;
 import com.winlator.contentdialog.DXVKConfigDialog;
 import com.winlator.contentdialog.DebugDialog;
+import com.winlator.contents.AdrenotoolsManager;
 import com.winlator.core.AppUtils;
 import com.winlator.core.DefaultVersion;
 import com.winlator.core.EnvVars;
@@ -852,15 +853,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             else if (dxwrapper.equals("vkd3d")) envVars.put("VKD3D_FEATURE_LEVEL", "12_1");
 
             // Default wrapper+adrenotools to our shipped Mesa driver set unless container overrides.
-            // (The wrapper ICD itself is in usr/lib and is loaded by VK_ICD_FILENAMES.)
-            if (!envVars.has("ADRENOTOOLS_DRIVER_PATH")) {
-                envVars.put("ADRENOTOOLS_DRIVER_PATH", rootDir.getPath() + "/usr/lib/");
-            }
-            if (!envVars.has("ADRENOTOOLS_HOOKS_PATH")) {
-                envVars.put("ADRENOTOOLS_HOOKS_PATH", rootDir.getPath() + "/usr/lib");
-            }
-            if (!envVars.has("ADRENOTOOLS_DRIVER_NAME")) {
-                envVars.put("ADRENOTOOLS_DRIVER_NAME", "libvulkan_freedreno.so");
+            // Use Ludashi-style Adrenotools driver bundle by default so we get a Vulkan 1.3-capable
+            // implementation on devices whose system Vulkan is stuck at 1.1.
+            if (!envVars.has("ADRENOTOOLS_DRIVER_PATH") && !envVars.has("ADRENOTOOLS_DRIVER_NAME")) {
+                new AdrenotoolsManager(this).setDriverById(envVars, imageFs, "turnip" + DefaultVersion.TURNIP);
             }
             if (!envVars.has("WRAPPER_VK_VERSION")) {
                 // Matches wrapper_icd.aarch64.json from the bionic-aligned wrapper bundle.
@@ -941,6 +937,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         if (!wrapperLib.isFile() || !wrapperIcd.isFile()) {
             TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "graphics_driver/wrapper.tzst", rootDir);
         }
+        // Vulkan layers used by the wrapper stack (validation, bcn layer, vkbasalt, etc).
+        TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "layers.tzst", rootDir);
 
         // Ensure the Mesa driver + GL helper libs exist (used by wrapper + zink).
         if (!freedrenoLib.isFile() || !glapiLib.isFile() || !glLib.isFile()) {
