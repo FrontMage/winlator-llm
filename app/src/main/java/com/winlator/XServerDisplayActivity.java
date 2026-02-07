@@ -862,6 +862,12 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             if (!envVars.has("ADRENOTOOLS_DRIVER_NAME")) {
                 envVars.put("ADRENOTOOLS_DRIVER_NAME", "libvulkan_freedreno.so");
             }
+            if (!envVars.has("WRAPPER_VK_VERSION")) {
+                // Matches wrapper_icd.aarch64.json from the bionic-aligned wrapper bundle.
+                // DXVK 2.x requires a Vulkan 1.3 capable adapter; wrapper defaults may expose 1.1
+                // unless overridden.
+                envVars.put("WRAPPER_VK_VERSION", "1.3.289");
+            }
 
             envVars.put("GALLIUM_DRIVER", "zink");
             envVars.put("ZINK_CONTEXT_THREADED", "1");
