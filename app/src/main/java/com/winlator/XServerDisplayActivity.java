@@ -823,6 +823,11 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         }
 
         if (graphicsDriver.equals("turnip")) {
+            // Some upstream Mesa bundles ship an ICD JSON with a hard-coded app path
+            // (e.g. /data/data/com.winlator/...). Rewrite it to our actual extracted rootfs
+            // so the Vulkan loader can load the driver and expose VK_KHR_surface.
+            ensureTurnipIcdJson(rootDir);
+
             // Force Vulkan loader to use our shipped ICD (Mesa Turnip). On many Android devices the
             // system Vulkan driver may expose a lower Vulkan version than DXVK requires, causing
             // instant failure without a clear Wine-side error.
@@ -873,6 +878,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             if (changed) {
                 GeneralComponents.extractFile(GeneralComponents.Type.TURNIP, this, DefaultVersion.TURNIP, DefaultVersion.TURNIP);
                 TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "graphics_driver/zink-"+DefaultVersion.ZINK+".tzst", rootDir);
+                // Extraction may have recreated/overwritten the ICD JSON, so patch again.
+                ensureTurnipIcdJson(rootDir);
             }
         }
         else if (graphicsDriver.equals("virgl")) {
@@ -884,6 +891,27 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             envVars.put("vblank_mode", "0");
             if (changed) TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "graphics_driver/virgl-"+DefaultVersion.VIRGL+".tzst", rootDir);
         }
+    }
+
+    private void ensureTurnipIcdJson(File rootDir) {
+        if (rootDir == null) return;
+        File icdFile = new File(rootDir, "usr/share/vulkan/icd.d/freedreno_icd.aarch64.json");
+        if (!icdFile.isFile()) return;
+
+        File libFile = new File(rootDir, "usr/lib/libvulkan_freedreno.so");
+        String expectedLibPath = libFile.getAbsolutePath();
+
+        try {
+            JSONObject json = new JSONObject(FileUtils.readString(icdFile));
+            JSONObject icd = json.optJSONObject("ICD");
+            if (icd == null) return;
+            String current = icd.optString("library_path", "");
+            if (expectedLibPath.equals(current)) return;
+            icd.put("library_path", expectedLibPath);
+            // Keep it pretty for on-device inspection.
+            FileUtils.writeString(icdFile, json.toString(4));
+        }
+        catch (JSONException ignored) {}
     }
 
     private void showTouchpadHelpDialog() {
