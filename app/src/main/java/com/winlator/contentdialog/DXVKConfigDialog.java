@@ -50,7 +50,7 @@ public class DXVKConfigDialog extends ContentDialog {
         if (!envVars.has("DXVK_LOG_LEVEL")) {
             // For this mod we want DXVK to always be able to emit a log by default.
             // "none" makes DXVK failures very hard to diagnose (it may just exit early).
-            envVars.put("DXVK_LOG_LEVEL", "info");
+            envVars.put("DXVK_LOG_LEVEL", "debug");
         }
 
         File rootDir = ImageFs.find(context).getRootDir();

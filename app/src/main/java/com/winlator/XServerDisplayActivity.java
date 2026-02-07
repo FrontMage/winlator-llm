@@ -846,8 +846,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 // Some container configs default to "none", which disables DXVK logs entirely.
                 // Treat that as "unset" and bump to info so failures produce a log file.
                 String dxvkLogLevel = envVars.get("DXVK_LOG_LEVEL");
-                if (dxvkLogLevel == null || dxvkLogLevel.isEmpty() || "none".equalsIgnoreCase(dxvkLogLevel)) {
-                    envVars.put("DXVK_LOG_LEVEL", "info");
+                if (dxvkLogLevel == null || dxvkLogLevel.isEmpty() ||
+                    "none".equalsIgnoreCase(dxvkLogLevel) || "info".equalsIgnoreCase(dxvkLogLevel)) {
+                    // We are actively debugging DXVK black screen/hangs; keep this verbose.
+                    envVars.put("DXVK_LOG_LEVEL", "debug");
                 }
             }
             else if (dxwrapper.equals("vkd3d")) envVars.put("VKD3D_FEATURE_LEVEL", "12_1");
@@ -870,15 +872,22 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             envVars.put("TU_OVERRIDE_HEAP_SIZE", "4096");
             if (!envVars.has("MESA_VK_WSI_PRESENT_MODE")) envVars.put("MESA_VK_WSI_PRESENT_MODE", "mailbox");
             envVars.put("vblank_mode", "0");
+            // Winlator-Ludashi sets this unconditionally for Turnip. It avoids DRI3/Present paths
+            // that can hang around swapchain creation on some devices/configs.
+            if (!envVars.has("MESA_VK_WSI_DEBUG")) envVars.put("MESA_VK_WSI_DEBUG", "sw");
 
             // Wrapper defaults (Winlator-Ludashi aligned). These greatly affect swapchain and WSI
             // behavior; keep them explicit for reproducibility while allowing per-container overrides.
             if (!envVars.has("WRAPPER_EXTENSION_BLACKLIST")) envVars.put("WRAPPER_EXTENSION_BLACKLIST", "");
             if (!envVars.has("WRAPPER_RESOURCE_TYPE")) envVars.put("WRAPPER_RESOURCE_TYPE", "auto");
             if (dxwrapper.equals("dxvk")) {
-                if (!envVars.has("WRAPPER_DISABLE_PRESENT_WAIT")) envVars.put("WRAPPER_DISABLE_PRESENT_WAIT", "1");
-                // Cap swapchain image count for stability on Android WSI paths unless user overrides.
-                if (!envVars.has("WRAPPER_MAX_IMAGE_COUNT")) envVars.put("WRAPPER_MAX_IMAGE_COUNT", "3");
+                // Keep defaults aligned with Ludashi unless user overrides.
+                if (!envVars.has("WRAPPER_DISABLE_PRESENT_WAIT")) envVars.put("WRAPPER_DISABLE_PRESENT_WAIT", "0");
+                if (!envVars.has("WRAPPER_MAX_IMAGE_COUNT")) envVars.put("WRAPPER_MAX_IMAGE_COUNT", "0");
+
+                // Persist wrapper logs to disk so we can see where swapchain/present gets stuck.
+                if (!envVars.has("WRAPPER_LOG_FILE")) envVars.put("WRAPPER_LOG_FILE", "/storage/emulated/0/Download/Winlator/wrapper.log");
+                if (!envVars.has("WRAPPER_LOG_LEVEL")) envVars.put("WRAPPER_LOG_LEVEL", "debug");
             }
 
             // Turnip stability: prefer system memory path (Ludashi default is noconform,sysmem).
