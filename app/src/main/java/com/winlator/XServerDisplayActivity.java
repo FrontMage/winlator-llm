@@ -870,14 +870,23 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             envVars.put("TU_OVERRIDE_HEAP_SIZE", "4096");
             if (!envVars.has("MESA_VK_WSI_PRESENT_MODE")) envVars.put("MESA_VK_WSI_PRESENT_MODE", "mailbox");
             envVars.put("vblank_mode", "0");
-            envVars.put("WINEVKUSEPLACEDADDR", "1");
 
-            if (!GPUInformation.isAdreno6xx(this)) {
-                EnvVars userEnvVars = new EnvVars(container.getEnvVars());
-                String tuDebug = userEnvVars.get("TU_DEBUG");
-                if (!tuDebug.contains("sysmem")) userEnvVars.put("TU_DEBUG", (!tuDebug.isEmpty() ? tuDebug+"," : "")+"sysmem");
-                container.setEnvVars(userEnvVars.toString());
+            // Wrapper defaults (Winlator-Ludashi aligned). These greatly affect swapchain and WSI
+            // behavior; keep them explicit for reproducibility while allowing per-container overrides.
+            if (!envVars.has("WRAPPER_EXTENSION_BLACKLIST")) envVars.put("WRAPPER_EXTENSION_BLACKLIST", "");
+            if (!envVars.has("WRAPPER_RESOURCE_TYPE")) envVars.put("WRAPPER_RESOURCE_TYPE", "auto");
+            if (dxwrapper.equals("dxvk")) {
+                if (!envVars.has("WRAPPER_DISABLE_PRESENT_WAIT")) envVars.put("WRAPPER_DISABLE_PRESENT_WAIT", "1");
+                // Cap swapchain image count for stability on Android WSI paths unless user overrides.
+                if (!envVars.has("WRAPPER_MAX_IMAGE_COUNT")) envVars.put("WRAPPER_MAX_IMAGE_COUNT", "3");
             }
+
+            // Turnip stability: prefer system memory path (Ludashi default is noconform,sysmem).
+            String tuDebug = envVars.get("TU_DEBUG");
+            if (tuDebug == null) tuDebug = "";
+            if (tuDebug.isEmpty()) tuDebug = "noconform";
+            if (!tuDebug.contains("sysmem")) tuDebug = tuDebug + ",sysmem";
+            envVars.put("TU_DEBUG", tuDebug);
 
             boolean useDRI3 = preferences.getBoolean("use_dri3", true);
             if (!useDRI3) {
@@ -890,6 +899,17 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 // Wrapper + extra libs required for DXVK/Vulkan WSI; re-extract when driver changes.
                 ensureVulkanWrapperInstalled(rootDir);
                 TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "graphics_driver/zink-"+DefaultVersion.ZINK+".tzst", rootDir);
+            }
+
+            // Ludashi: on first boot, extract arm64ec Zink DLL overrides into the prefix (non-Mali).
+            if (firstTimeBoot && wineInfo != null && wineInfo.isArm64EC() &&
+                !GPUInformation.getRenderer(this).contains("Mali")) {
+                TarCompressorUtils.extract(
+                    TarCompressorUtils.Type.ZSTD,
+                    this,
+                    "graphics_driver/zink_dlls.tzst",
+                    new File(rootDir, ImageFs.WINEPREFIX + "/drive_c/windows")
+                );
             }
         }
         else if (graphicsDriver.equals("virgl")) {

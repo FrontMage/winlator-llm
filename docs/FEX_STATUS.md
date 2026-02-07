@@ -1,6 +1,6 @@
 # FEX-Only (arm64ec) Status / Debug Notes
 
-Date: 2026-02-06
+Date: 2026-02-07
 
 This document is a running snapshot of the current **FEX-only** direction (Winlator as UI/container shell, using an **arm64ec Wine build + FEX WOW64 bridge**), what was changed, what is currently broken, and how we are debugging it.
 
@@ -17,9 +17,9 @@ Make containers run using:
 Avoid:
 - PRoot-based guest launcher for the arm64ec path (align with the bionic-derived implementation that launches Wine directly).
 
-## Current Symptom
+## Current Symptom (Historical, Fixed)
 
-Container startup flashes and then exits (UI returns to launcher). The guest process terminates quickly with status `53`.
+Container startup used to flash and exit (UI returns to launcher). The guest process terminated quickly with status `53`.
 
 From `/storage/emulated/0/Download/Winlator/wine.log`:
 - Wine starts (esync banner appears).
@@ -27,7 +27,46 @@ From `/storage/emulated/0/Download/Winlator/wine.log`:
 - Then it fails again with:
   `wine: could not load kernel32.dll, status c0000135`
 
-This is confusing because the log also contains successful `loaddll` lines for `kernel32.dll` earlier in the same run.
+This was confusing because the log also contained successful `loaddll` lines for `kernel32.dll` earlier in the same run.
+
+## Current Status (Now)
+
+- Containers boot and stay running on the **FEX-only / arm64ec** path.
+- `wfm.exe` and built-in helper apps launch (mono installer / D3D tests, etc).
+- Drive mapping and the startup popup logic were fixed earlier; focus has moved to graphics stability.
+
+## Current Blocker: DXVK Black Screen / Hang (Turnip + Wrapper)
+
+DXVK no longer fails immediately, but D3D tests can show **black screen** and/or appear to **hang** around swapchain creation.
+
+Key evidence from `/storage/emulated/0/Download/Winlator/wine.log`:
+- WineVulkan + DXVK initialize successfully.
+- X11 surface creation succeeds:
+  - `X11DRV_vulkan_surface_create Created surface ...`
+- DXVK reports swapchain properties, then the log stops around `vkCreateSwapchainKHR`:
+  - `Presenter: Actual swap chain properties: ... Image count: 4 ...`
+
+Key evidence from `/storage/emulated/0/Download/Winlator/TestD3D_d3d9.log`:
+- DXVK sees a Vulkan 1.3-capable adapter:
+  - `Wrapper(Turnip Adreno (TM) 650)`
+
+### Root Causes We Already Fixed (DXVK bring-up)
+
+1. Missing WSI path:
+   - DXVK previously reported `Required Vulkan extension VK_KHR_surface not supported`.
+   - Fix: force `VK_ICD_FILENAMES` to `wrapper_icd.aarch64.json` for `graphicsDriver=turnip` and ship wrapper assets.
+
+2. Wrong/invalid Vulkan driver selection:
+   - Forcing Linux Mesa `libvulkan_freedreno.so` caused loader/link errors on Android (e.g. missing `libdrm.so.2`).
+   - Fix: use **Adrenotools** Android driver `vulkan.ad07xx.so` from `adrenotools-turnip25.1.0.tzst`.
+
+### Alignment Work In Progress (Ludashi/bionic)
+
+We found remaining deltas vs `third_party/Winlator-Ludashi` that may affect presentation:
+- Missing wrapper env defaults (e.g. `WRAPPER_DISABLE_PRESENT_WAIT`, `WRAPPER_MAX_IMAGE_COUNT`, `WRAPPER_RESOURCE_TYPE`, extension blacklist).
+- Missing `graphics_driver/zink_dlls.tzst` extraction into the prefix on first boot for arm64ec.
+
+Next step is to keep tightening wrapper+WSI defaults to match Ludashi behavior and iterate based on `wine.log` + DXVK logs.
 
 ## New Finding (Most Likely Root Cause)
 
