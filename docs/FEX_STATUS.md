@@ -35,6 +35,28 @@ This was confusing because the log also contained successful `loaddll` lines for
 - `wfm.exe` and built-in helper apps launch (mono installer / D3D tests, etc).
 - Drive mapping and the startup popup logic were fixed earlier; focus has moved to graphics stability.
 
+## Current Blocker: WoW ILLEGAL_INSTRUCTION (0xC000001D)
+
+Some WoW builds still fail with a Wine fatal error dialog reporting:
+- `Exception: 0xC000001D (ILLEGAL_INSTRUCTION)`
+
+This is ambiguous without extra instrumentation: it can mean either
+1) The guest executed an instruction not supported by the translated CPU view (CPUID mismatch / feature gating), or
+2) FEX encountered an unimplemented guest opcode and raised SIGILL which it then converts to `EXCEPTION_ILLEGAL_INSTRUCTION`.
+
+### Debug Instrumentation (Added)
+
+1. Wine exception logging (always visible in our persistent log):
+   - We ensure `WINEDEBUG` contains `+seh,+unwind` for arm64ec WoW64 sessions so the log includes exception address/module.
+
+2. FEX bridge SIGILL logging:
+   - The FEX Windows bridge logs when it converts SIGILL into `EXCEPTION_ILLEGAL_INSTRUCTION`:
+     - `SIGILL -> EXCEPTION_ILLEGAL_INSTRUCTION: GuestIP=0x... TrapNo=... err=0x...`
+
+Both end up in:
+- `/storage/emulated/0/Download/Winlator/wine.log` (latest run)
+- plus rotated copies: `wine-YYYYMMDD-HHMMSS.log`
+
 ## Current Blocker: DXVK Black Screen / Hang (Turnip + Wrapper)
 
 DXVK no longer fails immediately, but D3D tests can show **black screen** and/or appear to **hang** around swapchain creation.
