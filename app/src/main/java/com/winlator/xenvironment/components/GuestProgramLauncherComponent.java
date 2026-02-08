@@ -26,7 +26,9 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.net.InetAddress;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class GuestProgramLauncherComponent extends EnvironmentComponent {
     private static final String TAG = "GuestLauncher";
@@ -40,6 +42,43 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
     private static final Object lock = new Object();
     private boolean wow64Mode = true;
     private boolean arm64ecWine = false;
+
+    private static String ensureWineDebugChannels(String wineDebug, String... channels) {
+        if (wineDebug == null) wineDebug = "";
+        wineDebug = wineDebug.trim();
+
+        Set<String> enabled = new HashSet<>();
+        Set<String> disabled = new HashSet<>();
+
+        if (!wineDebug.isEmpty()) {
+            String[] parts = wineDebug.split(",");
+            for (String part : parts) {
+                String token = part.trim();
+                if (token.isEmpty()) continue;
+
+                char prefix = token.charAt(0);
+                String name = (prefix == '+' || prefix == '-') ? token.substring(1) : token;
+                if (name.isEmpty()) continue;
+
+                if (prefix == '-') disabled.add(name);
+                else enabled.add(name);
+            }
+        }
+
+        String out = wineDebug;
+        for (String ch : channels) {
+            if (ch == null) continue;
+            ch = ch.trim();
+            if (ch.isEmpty()) continue;
+            if (enabled.contains(ch) || disabled.contains(ch)) continue;
+
+            if (out.isEmpty()) out = "+" + ch;
+            else out += ",+" + ch;
+            enabled.add(ch);
+        }
+
+        return out;
+    }
 
     @Override
     public void start() {
@@ -268,6 +307,15 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
             envVars.remove("HODLL64");
             if (!envVars.has("WINEDEBUG") || "-all".equals(envVars.get("WINEDEBUG"))) {
                 envVars.put("WINEDEBUG", "+loaddll,+err,+warn,+process");
+            }
+
+            // Ensure we always capture useful exception context in wine.log.
+            // WoW's "ILLEGAL_INSTRUCTION" is often handled internally, so without +seh
+            // we don't see the original exception address/module.
+            if (wow64Mode) {
+                String wineDebug = envVars.get("WINEDEBUG");
+                wineDebug = ensureWineDebugChannels(wineDebug, "seh", "unwind");
+                envVars.put("WINEDEBUG", wineDebug);
             }
 
             // When DXVK is enabled, add Vulkan channel so wine.log contains loader/instance errors.
