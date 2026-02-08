@@ -299,6 +299,17 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
             envVars.put("FEX_HIDEHYPERVISORBIT", "1");
         }
 
+        // WoW64 field diagnostics: log key FEX events to wine.log to speed up fixing
+        // Warden/SMC/JIT related issues. Users can override/disable per-shortcut.
+        final boolean userSpecifiedDiagSigill =
+                this.envVars != null && this.envVars.has("FEX_DIAG_SIGILL");
+        final boolean userSpecifiedDiagSmc =
+                this.envVars != null && this.envVars.has("FEX_DIAG_SMC");
+        if (isArm64ecWine && wow64Mode) {
+            if (!userSpecifiedDiagSigill) envVars.put("FEX_DIAG_SIGILL", "1");
+            if (!userSpecifiedDiagSmc) envVars.put("FEX_DIAG_SMC", "1");
+        }
+
         if (isArm64ecWine) {
             envVars.put("HOME", rootPath + ImageFs.HOME_PATH);
             envVars.put("WINEPREFIX", rootPath + ImageFs.WINEPREFIX);
