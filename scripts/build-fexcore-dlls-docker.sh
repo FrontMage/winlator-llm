@@ -92,12 +92,23 @@ docker run --rm -t \
 set -euo pipefail
 
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -y
-apt-get install -y --no-install-recommends \
-  ca-certificates curl xz-utils zstd \
-  cmake ninja-build python3 pkg-config \
-  python3-packaging python3-setuptools \
-  build-essential git file
+
+apt_install_deps() {
+  apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update -y
+  apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y --no-install-recommends \
+    ca-certificates curl xz-utils zstd \
+    cmake ninja-build python3 pkg-config \
+    python3-packaging python3-setuptools \
+    build-essential git file
+}
+
+# Proxies help for some networks, but can also fail (502/timeout). If apt fails,
+# retry once with proxies disabled inside the container.
+if ! apt_install_deps; then
+  echo \"apt-get failed (possibly due to proxy). Retrying without http(s)_proxy...\" >&2
+  unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY
+  apt_install_deps
+fi
 
 TOOLCHAIN_DIR=\"/cache/${TOOLCHAIN_TAR%.tar.xz}\"
 TOOLCHAIN_TAR=\"/cache/${TOOLCHAIN_TAR}\"
