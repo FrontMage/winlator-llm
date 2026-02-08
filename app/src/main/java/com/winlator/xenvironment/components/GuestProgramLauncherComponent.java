@@ -213,6 +213,20 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
             envVars.putAll(this.envVars);
         }
 
+        // ARM64EC quirk profile (Win-on-ARM style app profile):
+        // Some older x86 titles do self-modifying code / patching during startup and can crash on arm64ec
+        // when SMC tracking isn't robust enough. FEX upstream tracks this as an arm64ec quirk and notes
+        // Windows works around it with an app profile (see FEX issue #5133).
+        // If the user didn't explicitly configure SMC checks, prefer correctness for these titles.
+        final String guestExeLower = guestExecutable != null ? guestExecutable.toLowerCase() : "";
+        final boolean isWoW = guestExeLower.contains("wow.exe");
+        final boolean userSpecifiedSMCChecks =
+                this.envVars != null && this.envVars.has("FEX_SMC_CHECKS");
+        if (isArm64ecWine && wow64Mode && isWoW && !userSpecifiedSMCChecks) {
+            envVars.put("FEX_SMC_CHECKS", "full");
+            // Keep multiblock config from preset unless the user explicitly overrides it.
+        }
+
         // FEX + WoW64: Some 32-bit titles (WoW/TurtleWoW is a concrete repro) hit
         // STATUS_ILLEGAL_INSTRUCTION on the first x87 instruction when reduced-precision
         // mode is enabled. If the user didn't explicitly override this variable, force
