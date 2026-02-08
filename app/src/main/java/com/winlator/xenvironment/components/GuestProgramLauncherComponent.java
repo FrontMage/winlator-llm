@@ -233,7 +233,11 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
             envVars.put("LD_PRELOAD", ldPreload);
             envVars.put("LD_LIBRARY_PATH", rootPath + "/usr/lib" + ":/system/lib64");
             envVars.put("PATH", wineBinPath + ":" + rootPath + "/usr/bin");
-            envVars.put("HODLL", "libwow64fex.dll");
+            // Allow overriding WoW64 backend via env. Default is FEX's WoW64 bridge.
+            // If the user sets HODLL (e.g. wowbox64.dll), don't clobber it.
+            if (!envVars.has("HODLL") || envVars.get("HODLL") == null || envVars.get("HODLL").isEmpty()) {
+                envVars.put("HODLL", "libwow64fex.dll");
+            }
             envVars.remove("HODLL64");
             if (!envVars.has("WINEDEBUG") || "-all".equals(envVars.get("WINEDEBUG"))) {
                 envVars.put("WINEDEBUG", "+loaddll,+err,+warn,+process");
@@ -375,6 +379,7 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
 
         File wow64Dll = new File(system32Dir, "libwow64fex.dll");
         File arm64ecDll = new File(system32Dir, "libarm64ecfex.dll");
+        File wowbox64Dll = new File(system32Dir, "wowbox64.dll");
         boolean needsExtract = !requestedVersion.equals(currentFexcoreVersion)
                 || !wow64Dll.isFile()
                 || !arm64ecDll.isFile();
@@ -387,6 +392,17 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
                     system32Dir
             );
             preferences.edit().putString("current_fexcore_version", requestedVersion).apply();
+        }
+
+        // Optional WoW64 CPU backend used by Winlator-Ludashi for x86-heavy titles (e.g. WoW).
+        // We ship it to keep parity, but only use it if the user sets HODLL=wowbox64.dll.
+        if (!wowbox64Dll.isFile()) {
+            TarCompressorUtils.extract(
+                    TarCompressorUtils.Type.ZSTD,
+                    context,
+                    "wowbox64/wowbox64-0.3.7.tzst",
+                    system32Dir
+            );
         }
     }
 
