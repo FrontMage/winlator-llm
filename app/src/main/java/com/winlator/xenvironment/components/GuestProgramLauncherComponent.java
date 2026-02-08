@@ -287,8 +287,17 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
             final Callback<String>[] wineLogCallback = new Callback[1];
             try {
                 // Always keep a persistent log on disk for FEX/arm64ec debugging.
-                // We intentionally append and don't rotate/version for now.
-                wineLogWriter[0] = new BufferedWriter(new FileWriter(wineLogFile, true));
+                // Rotate on every container launch so reproductions are easy to diff.
+                // Keep writing to wine.log (latest) so users always know where to look.
+                if (wineLogFile.isFile() && wineLogFile.length() > 0) {
+                    String ts = new java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US)
+                            .format(new java.util.Date());
+                    File rotated = new File(externalLogDir, "wine-" + ts + ".log");
+                    // Best-effort rotation. If rename fails, we'll just overwrite wine.log.
+                    //noinspection ResultOfMethodCallIgnored
+                    wineLogFile.renameTo(rotated);
+                }
+                wineLogWriter[0] = new BufferedWriter(new FileWriter(wineLogFile, false));
                 synchronized (wineLogWriter) {
                     wineLogWriter[0].write("----- Winlator arm64ec wine session: " + new java.util.Date().toString() + " -----");
                     wineLogWriter[0].newLine();

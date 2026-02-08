@@ -129,6 +129,7 @@ build_one() {
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX=/usr \
     -DCMAKE_INSTALL_LIBDIR=/usr/lib/wine/aarch64-windows \
+    -DTUNE_CPU=none \
     -DENABLE_LTO=OFF \
     -DBUILD_TESTING=OFF
 
