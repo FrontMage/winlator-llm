@@ -227,6 +227,13 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
             // Keep multiblock config from preset unless the user explicitly overrides it.
         }
 
+        // Ensure FEX logs are actually emitted for debugging. FEX's Windows bridge defaults to silent logging.
+        // Route logs through Wine's __wine_dbg_output so they end up in our captured wine.log.
+        boolean userSpecifiedSilentLog = this.envVars != null && this.envVars.has("FEX_SILENTLOG");
+        if (isArm64ecWine && wow64Mode && !userSpecifiedSilentLog) {
+            envVars.put("FEX_SILENTLOG", "0");
+        }
+
         // FEX + WoW64: Some 32-bit titles (WoW/TurtleWoW is a concrete repro) hit
         // STATUS_ILLEGAL_INSTRUCTION on the first x87 instruction when reduced-precision
         // mode is enabled. If the user didn't explicitly override this variable, force
@@ -394,19 +401,18 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         File wow64Dll = new File(system32Dir, "libwow64fex.dll");
         File arm64ecDll = new File(system32Dir, "libarm64ecfex.dll");
         File wowbox64Dll = new File(system32Dir, "wowbox64.dll");
-        boolean needsExtract = !requestedVersion.equals(currentFexcoreVersion)
-                || !wow64Dll.isFile()
-                || !arm64ecDll.isFile();
-
-        if (needsExtract) {
-            TarCompressorUtils.extract(
-                    TarCompressorUtils.Type.ZSTD,
-                    context,
-                    "fexcore/fexcore-" + requestedVersion + ".tzst",
-                    system32Dir
-            );
-            preferences.edit().putString("current_fexcore_version", requestedVersion).apply();
-        }
+        // Development-oriented behavior: always overwrite the FEX bridge DLLs on container start.
+        // We intentionally don't rely on versioning here, because during active FEX iteration
+        // we may rebuild the same "version" and still need the new DLLs to be picked up.
+        if (wow64Dll.isFile()) wow64Dll.delete();
+        if (arm64ecDll.isFile()) arm64ecDll.delete();
+        TarCompressorUtils.extract(
+                TarCompressorUtils.Type.ZSTD,
+                context,
+                "fexcore/fexcore-" + requestedVersion + ".tzst",
+                system32Dir
+        );
+        preferences.edit().putString("current_fexcore_version", requestedVersion).apply();
 
         // Optional WoW64 CPU backend used by Winlator-Ludashi for x86-heavy titles (e.g. WoW).
         // We ship it to keep parity, but only use it if the user sets HODLL=wowbox64.dll.

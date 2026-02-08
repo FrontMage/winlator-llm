@@ -82,6 +82,8 @@ Outputs:
 EOF
 
 docker run --rm -t \
+  -e https_proxy -e http_proxy -e no_proxy \
+  -e HTTPS_PROXY -e HTTP_PROXY -e NO_PROXY \
   -v "${ROOT_DIR}:/work" \
   -v "${ROOT_DIR}/${CACHE_DIR}:/cache" \
   -w /work \
@@ -159,7 +161,7 @@ echo \"Packaging tzst...\"
 tmpdir=\$(mktemp -d)
 cp -f /work/${OUT_DIR}/libwow64fex.dll \"\$tmpdir/\"
 cp -f /work/${OUT_DIR}/libarm64ecfex.dll \"\$tmpdir/\"
-tar -C \"\$tmpdir\" -cf - libwow64fex.dll libarm64ecfex.dll | zstd -T0 -19 -o /work/${OUT_DIR}/fexcore-${FEXCORE_VERSION}.tzst
+ tar -C \"\$tmpdir\" -cf - libwow64fex.dll libarm64ecfex.dll | zstd -f -T0 -19 -o /work/${OUT_DIR}/fexcore-${FEXCORE_VERSION}.tzst
 rm -rf \"\$tmpdir\"
 
 file /work/${OUT_DIR}/libwow64fex.dll || true
