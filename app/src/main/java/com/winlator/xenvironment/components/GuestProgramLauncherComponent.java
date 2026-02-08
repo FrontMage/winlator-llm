@@ -290,6 +290,15 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
             if ("1".equals(x87Reduced)) envVars.put("FEX_X87REDUCEDPRECISION", "0");
         }
 
+        // Anti-cheat/VM detection: By default FEX sets the CPUID hypervisor bit and exposes
+        // 0x4000_0000 leaves. Many titles will treat that as "running in VM" and may refuse
+        // to run or disconnect (Warden-style checks). Hide it unless the user explicitly opts in.
+        final boolean userSpecifiedHideHypervisorBit =
+                this.envVars != null && this.envVars.has("FEX_HIDEHYPERVISORBIT");
+        if (isArm64ecWine && wow64Mode && !userSpecifiedHideHypervisorBit) {
+            envVars.put("FEX_HIDEHYPERVISORBIT", "1");
+        }
+
         if (isArm64ecWine) {
             envVars.put("HOME", rootPath + ImageFs.HOME_PATH);
             envVars.put("WINEPREFIX", rootPath + ImageFs.WINEPREFIX);
