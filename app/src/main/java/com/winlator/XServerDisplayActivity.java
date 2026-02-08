@@ -836,11 +836,13 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 DXVKConfigDialog.setEnvVars(this, dxwrapperConfig, envVars);
                 // Always persist DXVK logs for debugging (FEX-only mod).
                 //
-                // DXVK reads DXVK_LOG_PATH from the Wine process environment. A Unix-style absolute
-                // path is accepted by Wine and is easiest to inspect on-device.
+                // DXVK runs as a Windows DLL and interprets DXVK_LOG_PATH as a Win32 path.
+                // Use Z: mapping to target the Android filesystem path we bind into the guest.
                 String dxvkLogPath = envVars.get("DXVK_LOG_PATH");
-                if (dxvkLogPath == null || dxvkLogPath.isEmpty() || "D:\\\\Winlator".equals(dxvkLogPath)) {
-                    envVars.put("DXVK_LOG_PATH", "/storage/emulated/0/Download/Winlator");
+                if (dxvkLogPath == null || dxvkLogPath.isEmpty() ||
+                    "D:\\\\Winlator".equals(dxvkLogPath) ||
+                    dxvkLogPath.startsWith("/")) {
+                    envVars.put("DXVK_LOG_PATH", "Z:\\\\storage\\\\emulated\\\\0\\\\Download\\\\Winlator");
                 }
 
                 // Some container configs default to "none", which disables DXVK logs entirely.
@@ -882,7 +884,9 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             if (!envVars.has("WRAPPER_RESOURCE_TYPE")) envVars.put("WRAPPER_RESOURCE_TYPE", "auto");
             if (dxwrapper.equals("dxvk")) {
                 // Keep defaults aligned with Ludashi unless user overrides.
-                if (!envVars.has("WRAPPER_DISABLE_PRESENT_WAIT")) envVars.put("WRAPPER_DISABLE_PRESENT_WAIT", "0");
+                // Some devices/drivers will block indefinitely in VK_KHR_present_wait paths.
+                // Default to disabling present wait for compatibility; allow overrides.
+                if (!envVars.has("WRAPPER_DISABLE_PRESENT_WAIT")) envVars.put("WRAPPER_DISABLE_PRESENT_WAIT", "1");
                 if (!envVars.has("WRAPPER_MAX_IMAGE_COUNT")) envVars.put("WRAPPER_MAX_IMAGE_COUNT", "0");
 
                 // Persist wrapper logs to disk so we can see where swapchain/present gets stuck.

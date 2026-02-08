@@ -322,8 +322,10 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
             // This is low-noise compared to full traces and is extremely helpful for crash triage.
             if (envVars.has("DXVK_LOG_LEVEL") || envVars.has("DXVK_LOG_PATH")) {
                 String wineDebug = envVars.get("WINEDEBUG");
+                // Never default to "+vulkan" (trace), it will spam wine.log and hide the real
+                // failure signal. Keep this at warn level.
                 if (wineDebug != null && !wineDebug.contains("vulkan")) {
-                    envVars.put("WINEDEBUG", wineDebug + ",+vulkan");
+                    envVars.put("WINEDEBUG", wineDebug + ",warn+vulkan");
                 }
             }
         }
