@@ -212,6 +212,18 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
             if (this.envVars.has("MANGOHUD_CONFIG")) this.envVars.remove("MANGOHUD_CONFIG");
             envVars.putAll(this.envVars);
         }
+
+        // FEX + WoW64: Some 32-bit titles (WoW/TurtleWoW is a concrete repro) hit
+        // STATUS_ILLEGAL_INSTRUCTION on the first x87 instruction when reduced-precision
+        // mode is enabled. If the user didn't explicitly override this variable, force
+        // full x87 handling for WoW64 runs.
+        boolean userSpecifiedX87ReducedPrecision =
+                this.envVars != null && this.envVars.has("FEX_X87REDUCEDPRECISION");
+        if (isArm64ecWine && wow64Mode && !userSpecifiedX87ReducedPrecision) {
+            String x87Reduced = envVars.get("FEX_X87REDUCEDPRECISION");
+            if ("1".equals(x87Reduced)) envVars.put("FEX_X87REDUCEDPRECISION", "0");
+        }
+
         if (isArm64ecWine) {
             envVars.put("HOME", rootPath + ImageFs.HOME_PATH);
             envVars.put("WINEPREFIX", rootPath + ImageFs.WINEPREFIX);
