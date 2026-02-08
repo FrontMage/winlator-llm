@@ -1,6 +1,6 @@
 # FEX-Only (arm64ec) Status / Debug Notes
 
-Date: 2026-02-07
+Date: 2026-02-08
 
 This document is a running snapshot of the current **FEX-only** direction (Winlator as UI/container shell, using an **arm64ec Wine build + FEX WOW64 bridge**), what was changed, what is currently broken, and how we are debugging it.
 
@@ -56,6 +56,23 @@ This is ambiguous without extra instrumentation: it can mean either
 Both end up in:
 - `/storage/emulated/0/Download/Winlator/wine.log` (latest run)
 - plus rotated copies: `wine-YYYYMMDD-HHMMSS.log`
+
+### Root Cause (Confirmed) and Fix (Shipped)
+
+One WoW repro was traced to a valid x87 opcode that FEX marked as invalid:
+
+- Faulting bytes (WoW.exe): `DC D8`
+  - Disassembles to: `fcomp st(0), st(0)` (x87 compare + pop)
+- Wine exception: `0xC000001D` at `0023:006FA876`
+- FEX log: `Invalid instruction in entry block: 6FA876`
+
+Fix:
+- Implement `0xDC D0..D7` (`FCOM ST(i)`) and `0xDC D8..DF` (`FCOMP ST(i)`) in FEX x87 tables.
+- Update the shipped `fexcore-2508.tzst` so containers pick up the new bridge DLLs.
+
+Status:
+- Code fix is in the local `third_party/FEX` tree and the updated `fexcore-2508.tzst` was rebuilt and packaged.
+- Next step is to re-run WoW and confirm the crash moves past the previous `GuestIP=0x6FA876` point (and see if any new missing opcode is hit).
 
 ## Current Blocker: DXVK Black Screen / Hang (Turnip + Wrapper)
 
