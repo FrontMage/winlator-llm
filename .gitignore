@@ -3,6 +3,8 @@
 build/
 app/.cxx/
 app/build/
+out/
+_logs/
 
 # local configs
 local.properties

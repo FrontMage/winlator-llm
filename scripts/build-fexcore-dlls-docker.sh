@@ -99,7 +99,7 @@ apt_install_deps() {
     ca-certificates curl xz-utils zstd \
     cmake ninja-build python3 pkg-config \
     python3-packaging python3-setuptools \
-    build-essential git file
+    git file
 }
 
 # Proxies help for some networks, but can also fail (502/timeout). If apt fails,
