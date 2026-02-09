@@ -104,47 +104,39 @@ public abstract class ProcessHelper {
 
     public static String[] splitCommand(String command) {
         ArrayList<String> result = new ArrayList<>();
-        boolean startedQuotes = false;
-        String value = "";
-        char currChar, nextChar;
-        for (int i = 0, count = command.length(); i < count; i++) {
-            currChar = command.charAt(i);
+        boolean inQuotes = false;
+        StringBuilder value = new StringBuilder();
 
-            if (startedQuotes) {
-                if (currChar == '"') {
-                    startedQuotes = false;
-                    if (!value.isEmpty()) {
-                        value += '"';
-                        result.add(value);
-                        value = "";
-                    }
-                }
-                else value += currChar;
+        for (int i = 0, count = command.length(); i < count; i++) {
+            char currChar = command.charAt(i);
+            char nextChar = (i < count - 1) ? command.charAt(i + 1) : '\0';
+
+            if (currChar == '"') {
+                // Quotes are purely for grouping; don't include them in argv.
+                inQuotes = !inQuotes;
+                continue;
             }
-            else if (currChar == '"') {
-                startedQuotes = true;
-                value += '"';
+
+            // Support "\ " for paths used by Winlator code paths (e.g. /dir ...replace(" ", "\\ ")).
+            if (!inQuotes && currChar == '\\' && nextChar == ' ') {
+                value.append(' ');
+                i++;
+                continue;
             }
-            else {
-                nextChar = i < count-1 ? command.charAt(i+1) : '\0';
-                if (currChar == ' ' || (currChar == '\\' && nextChar == ' ')) {
-                    if (currChar == '\\') {
-                        value += ' ';
-                        i++;
-                    }
-                    else if (!value.isEmpty()) {
-                        result.add(value);
-                        value = "";
-                    }
+
+            if (!inQuotes && currChar == ' ') {
+                if (value.length() > 0) {
+                    result.add(value.toString());
+                    value.setLength(0);
                 }
-                else {
-                    value += currChar;
-                    if (i == count-1) {
-                        result.add(value);
-                        value = "";
-                    }
-                }
+                continue;
             }
+
+            value.append(currChar);
+        }
+
+        if (value.length() > 0) {
+            result.add(value.toString());
         }
 
         return result.toArray(new String[0]);
