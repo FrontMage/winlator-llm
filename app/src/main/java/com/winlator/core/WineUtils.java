@@ -159,7 +159,13 @@ public abstract class WineUtils {
             }
         }
 
-        if (wineInfos.isEmpty()) wineInfos.add(WineInfo.MAIN_WINE_VERSION);
+        // FEX-only direction: do not fall back to the x86_64 "main/custom" Wine.
+        // If no arm64ec install is detected, still prefer the expected bundled identifier.
+        if (wineInfos.isEmpty()) {
+            String fallbackId = "wine-" + DefaultVersion.ARM64EC_WINE + "-arm64ec";
+            WineInfo fallback = WineInfo.fromIdentifier(context, fallbackId);
+            wineInfos.add(fallback);
+        }
 
         return wineInfos;
     }

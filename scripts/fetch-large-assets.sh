@@ -12,7 +12,6 @@ BIONIC_IMAGEFS_SHA_URL="${WINLATOR_BIONIC_IMAGEFS_SHA_URL:-${BIONIC_IMAGEFS_BASE
 
 REQUIRED_FILES=(
   "app/src/main/assets/imagefs_patches.tzst"
-  "app/src/main/assets/container_pattern.tzst"
   "app/src/main/assets/container_pattern_common.tzst"
   "app/src/main/assets/wincomponents/direct3d.tzst"
   "app/src/main/assets/graphics_driver/zink-22.2.5.tzst"
@@ -26,7 +25,6 @@ REQUIRED_FILES=(
 )
 
 ASSET_GROUPS=(
-  "container-pattern-v1|container-pattern-v1.tar.xz|app/src/main/assets/container_pattern.tzst"
   "wincomponents-v1|wincomponents-v1.tar.xz|app/src/main/assets/wincomponents/direct3d.tzst"
   "drivers-v1|drivers-v1.tar.xz|app/src/main/assets/graphics_driver/zink-22.2.5.tzst app/src/main/assets/graphics_driver/virgl-23.1.9.tzst app/src/main/assets/graphics_driver/turnip-24.1.0.tzst"
   "dx-wrapper-v1|dx-wrapper-v1.tar.xz|app/src/main/assets/dxwrapper/dxvk-2.4.1.tzst app/src/main/assets/dxwrapper/vkd3d-2.12.tzst"

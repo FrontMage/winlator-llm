@@ -5,6 +5,7 @@ import android.content.Context;
 import androidx.annotation.NonNull;
 
 import com.winlator.core.FileUtils;
+import com.winlator.core.DefaultVersion;
 import com.winlator.core.WineInfo;
 
 import java.io.File;
@@ -22,7 +23,8 @@ public class ImageFs {
 
     private ImageFs(File rootDir) {
         this.rootDir = rootDir;
-        this.winePath = new File(rootDir, "/opt/" + WineInfo.MAIN_WINE_VERSION.identifier()).getPath();
+        // FEX-only direction: default to the bundled arm64ec Wine tree.
+        this.winePath = new File(rootDir, "/opt/wine-" + DefaultVersion.ARM64EC_WINE + "-arm64ec").getPath();
     }
 
     public static ImageFs find(Context context) {

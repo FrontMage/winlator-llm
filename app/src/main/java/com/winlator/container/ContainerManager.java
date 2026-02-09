@@ -257,24 +257,13 @@ public class ContainerManager {
     }
 
     public boolean extractContainerPatternFile(String wineVersion, File containerDir, OnExtractFileListener onExtractFileListener) {
-        if (WineInfo.isMainWineVersion(wineVersion)) {
-            boolean result = TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, context, "container_pattern.tzst", containerDir, onExtractFileListener);
-
-            if (result) {
-                try {
-                    JSONObject commonDlls = new JSONObject(FileUtils.readString(context, "common_dlls.json"));
-                    extractCommonDlls("x86_64-windows", "system32", commonDlls, containerDir, onExtractFileListener);
-                    extractCommonDlls("i386-windows", "syswow64", commonDlls, containerDir, onExtractFileListener);
-                }
-                catch (JSONException e) {
-                    return false;
-                }
-            }
-
-            return result;
+        // FEX-only direction: do not use the x86_64 "main/custom" container pattern.
+        // Always prefer an arm64ec Wine identifier and follow the Ludashi/bionic extraction order.
+        if (wineVersion == null || WineInfo.isMainWineVersion(wineVersion)) {
+            WineInfo arm64ec = WineUtils.getFirstArm64ECWineInfo(context);
+            wineVersion = arm64ec != null ? arm64ec.identifier() : wineVersion;
         }
 
-        // Non-main versions (including arm64ec): follow Ludashi/bionic extraction order.
         WineInfo wineInfo = WineInfo.fromIdentifier(context, wineVersion);
 
         // 1) Prefer per-wine container pattern from assets if present.

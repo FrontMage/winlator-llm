@@ -592,7 +592,11 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             if (container.getStartupSelection() == Container.STARTUP_SELECTION_AGGRESSIVE) winHandler.killProcess("services.exe");
 
             boolean wow64Mode = container.isWoW64Mode();
-            String guestExecutable = wineInfo.getExecutable(this, wow64Mode)+" explorer /desktop=shell,"+xServer.screenInfo+" "+getWineStartCommand();
+            // On arm64ec Wine builds, "wine explorer" behaves like a wrapper that starts the system32 explorer
+            // and drops extra arguments. We need the Winlator-provided explorer shim at C:\windows\explorer.exe
+            // so it can forward "winhandler.exe wfm.exe" and keep the container alive.
+            String explorerExe = (wineInfo != null && wineInfo.isArm64EC()) ? " C:\\windows\\explorer.exe" : " explorer";
+            String guestExecutable = wineInfo.getExecutable(this, wow64Mode)+ explorerExe +" /desktop=shell,"+xServer.screenInfo+" "+getWineStartCommand();
             guestProgramLauncherComponent.setWoW64Mode(wow64Mode);
             guestProgramLauncherComponent.setGuestExecutable(guestExecutable);
 
@@ -1023,7 +1027,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         FileUtils.symlink(".."+FileUtils.toRelativePath(rootDir.getPath(), containerPatternDir.getPath()), linkFile.getPath());
 
         GuestProgramLauncherComponent guestProgramLauncherComponent = environment.getComponent(GuestProgramLauncherComponent.class);
-        guestProgramLauncherComponent.setGuestExecutable(wineInfo.getExecutable(this, false)+" explorer /desktop=shell,"+Container.DEFAULT_SCREEN_SIZE+" winecfg");
+        String explorerExe = (wineInfo != null && wineInfo.isArm64EC()) ? " C:\\windows\\explorer.exe" : " explorer";
+        guestProgramLauncherComponent.setGuestExecutable(wineInfo.getExecutable(this, false)+ explorerExe +" /desktop=shell,"+Container.DEFAULT_SCREEN_SIZE+" winecfg");
 
         final PreloaderDialog preloaderDialog = new PreloaderDialog(this);
         guestProgramLauncherComponent.setTerminationCallback((status) -> Executors.newSingleThreadExecutor().execute(() -> {

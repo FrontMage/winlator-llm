@@ -140,7 +140,8 @@ public abstract class ImageFsInstaller {
 
             File containerPatternDir = new File(activity.getCacheDir(), "container_pattern");
             FileUtils.delete(containerPatternDir);
-            TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, activity, "container_pattern.tzst", containerPatternDir);
+            // FEX-only direction: base pattern generation on the arm64ec container pattern.
+            TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, activity, "wine-10.0-arm64ec_container_pattern.tzst", containerPatternDir);
 
             File containerSystem32Dir = new File(containerPatternDir, ".wine/drive_c/windows/system32");
             File containerSysWoW64Dir = new File(containerPatternDir, ".wine/drive_c/windows/syswow64");
