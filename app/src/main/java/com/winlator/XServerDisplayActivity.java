@@ -597,7 +597,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             // the Android side to quit because we bind lifecycle to the guest process.
             String guestExecutable =
                     wineInfo.getExecutable(this, wow64Mode) +
-                    " C:\\\\windows\\\\explorer.exe /desktop=shell," + xServer.screenInfo + " " +
+                    " C:\\windows\\explorer.exe /desktop=shell," + xServer.screenInfo + " " +
                     getWineStartCommand();
             guestProgramLauncherComponent.setWoW64Mode(wow64Mode);
             guestProgramLauncherComponent.setGuestExecutable(guestExecutable);
@@ -1031,7 +1031,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         GuestProgramLauncherComponent guestProgramLauncherComponent = environment.getComponent(GuestProgramLauncherComponent.class);
         guestProgramLauncherComponent.setGuestExecutable(
                 wineInfo.getExecutable(this, false) +
-                " C:\\\\windows\\\\explorer.exe /desktop=shell," + Container.DEFAULT_SCREEN_SIZE + " winecfg"
+                " C:\\windows\\explorer.exe /desktop=shell," + Container.DEFAULT_SCREEN_SIZE + " winecfg"
         );
 
         final PreloaderDialog preloaderDialog = new PreloaderDialog(this);
