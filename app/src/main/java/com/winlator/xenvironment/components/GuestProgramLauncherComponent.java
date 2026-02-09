@@ -13,7 +13,6 @@ import androidx.preference.PreferenceManager;
 import com.winlator.core.Callback;
 import com.winlator.core.DefaultVersion;
 import com.winlator.core.EnvVars;
-import com.winlator.core.FileUtils;
 import com.winlator.core.ProcessHelper;
 import com.winlator.core.TarCompressorUtils;
 import com.winlator.fexcore.FEXCorePreset;
@@ -150,24 +149,6 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
 
     public void setFEXCorePreset(String fexcorePreset) {
         this.fexcorePreset = fexcorePreset != null ? fexcorePreset : FEXCorePreset.INTERMEDIATE;
-    }
-
-    private void ensureArm64ecExplorerShim(Context context, File rootDir, boolean isArm64ecWine) {
-        if (!isArm64ecWine) return;
-
-        // Win-on-ARM Wine builds expect the shell (explorer) to be native (AArch64).
-        // Older containers (or main-wine patterns) can leave an x86_64 explorer.exe in C:\\windows,
-        // which prevents our "wine C:\\windows\\explorer.exe /desktop=... winhandler.exe wfm.exe"
-        // startup path from ever reaching winhandler/wfm. Force the known-good native shim in place.
-        File dst = new File(rootDir, ImageFs.WINEPREFIX + "/drive_c/windows/explorer.exe");
-        File parent = dst.getParentFile();
-        if (parent != null && !parent.isDirectory()) parent.mkdirs();
-
-        // Always overwrite: we intentionally ignore versioning during active iteration.
-        FileUtils.copy(context, "explorer_shim/explorer-arm64ec.exe", dst);
-        // Best-effort: ensure it's executable.
-        //noinspection ResultOfMethodCallIgnored
-        dst.setExecutable(true, false);
     }
 
     private int execGuestProgram() {
@@ -381,7 +362,6 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         boolean bindSHM = envVars.get("WINEESYNC").equals("1");
 
         if (isArm64ecWine) {
-            ensureArm64ecExplorerShim(context, rootDir, true);
             String command = wineBinPath + "/" + guestExecutable;
             Log.i(TAG, "Launching guest command: " + command);
             Log.i(TAG, "Guest env (arm64ec): " + envVars.toString());

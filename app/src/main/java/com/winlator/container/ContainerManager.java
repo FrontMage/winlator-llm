@@ -9,6 +9,7 @@ import com.winlator.core.FileUtils;
 import com.winlator.core.OnExtractFileListener;
 import com.winlator.core.TarCompressorUtils;
 import com.winlator.core.WineInfo;
+import com.winlator.core.WineUtils;
 import com.winlator.xenvironment.ImageFs;
 
 import org.json.JSONArray;
@@ -104,8 +105,18 @@ public class ContainerManager {
             container.setRootDir(containerDir);
             container.loadData(data);
 
-            boolean isMainWineVersion = !data.has("wineVersion") || WineInfo.isMainWineVersion(data.getString("wineVersion"));
-            if (!isMainWineVersion) container.setWineVersion(data.getString("wineVersion"));
+            // New container creation: if the UI didn't specify "wineVersion" (common when only one arm64ec
+            // Wine is installed), pick the first available arm64ec Wine. Otherwise we fall back to MAIN_WINE_VERSION
+            // and extract the wrong container pattern.
+            String wineVersion;
+            if (data.has("wineVersion")) {
+                wineVersion = data.getString("wineVersion");
+            } else {
+                WineInfo arm64ec = WineUtils.getFirstArm64ECWineInfo(context);
+                wineVersion = arm64ec != null ? arm64ec.identifier() : WineInfo.MAIN_WINE_VERSION.identifier();
+                data.put("wineVersion", wineVersion);
+            }
+            container.setWineVersion(wineVersion);
 
             if (!extractContainerPatternFile(container.getWineVersion(), containerDir, null)) {
                 FileUtils.delete(containerDir);

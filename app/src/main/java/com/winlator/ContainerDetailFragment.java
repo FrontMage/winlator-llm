@@ -234,9 +234,13 @@ public class ContainerDetailFragment extends Fragment {
                     data.put("fexcorePreset", fexcorePreset);
                     data.put("desktopTheme", desktopTheme);
 
-                    if (wineInfos.size() > 1) {
-                        data.put("wineVersion", wineInfos.get(sWineVersion.getSelectedItemPosition()).identifier());
-                    }
+                    // Always persist the selected Wine version when creating a container.
+                    // WineUtils.getInstalledWineInfos() returns only arm64ec entries unless none exist,
+                    // so on most installs wineInfos.size()==1. If we don't write wineVersion, Container.loadData()
+                    // defaults to MAIN_WINE_VERSION, and the container is created from the wrong pattern.
+                    int wineIndex = 0;
+                    if (wineInfos.size() > 1) wineIndex = Math.max(0, sWineVersion.getSelectedItemPosition());
+                    if (!wineInfos.isEmpty()) data.put("wineVersion", wineInfos.get(wineIndex).identifier());
 
                     preloaderDialog.show(R.string.creating_container);
                     manager.createContainerAsync(data, (container) -> {
