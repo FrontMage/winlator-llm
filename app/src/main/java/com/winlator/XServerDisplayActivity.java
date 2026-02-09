@@ -656,9 +656,11 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         environment.addComponent(guestProgramLauncherComponent);
 
         if (isGenerateWineprefix()) generateWineprefix();
-        environment.startEnvironmentComponents();
 
+        // Start the host-side WinHandler server before Wine launches winhandler.exe.
+        // Otherwise winhandler.exe may exit early if it can't complete its init handshake.
         winHandler.start();
+        environment.startEnvironmentComponents();
         envVars.clear();
         dxwrapperConfig = null;
         audioDriverConfig = null;
