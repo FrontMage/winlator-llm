@@ -363,8 +363,18 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
 
         if (isArm64ecWine) {
             String command = wineBinPath + "/" + guestExecutable;
+            // For the desktop session startup we launch Wine's shell and then keep the Android
+            // activity alive until the Wine server exits. On arm64ec builds our shell bootstrap
+            // may exit quickly with status 0 after spawning winhandler/wfm, which is expected.
+            // If we treat that as "session finished" then the container will flash-exit.
+            final boolean keepAliveUntilWineserver =
+                    command.contains("/desktop=shell,") && command.contains("winhandler.exe");
+
             Log.i(TAG, "Launching guest command: " + command);
             Log.i(TAG, "Guest env (arm64ec): " + envVars.toString());
+            // Snapshot envp early. The activity clears its EnvVars instance after startup, but
+            // we still need the original environment for follow-up keepalive processes.
+            final String[] envp = envVars.toStringArray();
             File externalLogDir = new File("/storage/emulated/0/Download/Winlator");
             if (!externalLogDir.isDirectory()) externalLogDir.mkdirs();
             File wineLogFile = new File(externalLogDir, "wine.log");
@@ -416,10 +426,8 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
             catch (IOException ignored) {
                 wineLogWriter[0] = null;
             }
-            return ProcessHelper.exec(command, envVars.toStringArray(), rootDir, (status) -> {
-                synchronized (lock) {
-                    pid = -1;
-                }
+
+            final Runnable finalizeLogging = () -> {
                 if (wineLogCallback[0] != null) {
                     ProcessHelper.removeDebugCallback(wineLogCallback[0]);
                 }
@@ -431,8 +439,56 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
                         catch (IOException ignored) {}
                     }
                 }
+            };
+
+            final Callback<Integer> finalTermination = (status) -> {
+                synchronized (lock) {
+                    pid = -1;
+                }
+                finalizeLogging.run();
                 Log.i(TAG, "Guest process terminated with status: " + status);
                 if (terminationCallback != null) terminationCallback.call(status);
+            };
+
+            return ProcessHelper.exec(command, envp, rootDir, (status) -> {
+                // Normal program launch path: one process is the session.
+                if (!keepAliveUntilWineserver || status != 0) {
+                    finalTermination.call(status);
+                    return;
+                }
+
+                // Desktop bootstrap exited cleanly after spawning child processes; keep the session
+                // alive until Wine's server indicates all processes have exited.
+                if (wineLogCallback[0] != null) {
+                    wineLogCallback[0].call("winlator: shell bootstrap exited 0; waiting on wineserver -w");
+                }
+                Log.i(TAG, "Shell bootstrap exited 0; waiting on wineserver -w");
+
+                String wineserverPath = wineBinPath + "/wineserver";
+                File wineserverFile = new File(wineserverPath);
+                if (!wineserverFile.isFile()) {
+                    String alt = wineBinPath + "/wineserver64";
+                    if (new File(alt).isFile()) wineserverPath = alt;
+                    else wineserverPath = "wineserver";
+                }
+
+                int wsPid = ProcessHelper.exec(wineserverPath + " -w", envp, rootDir, (wsStatus) -> {
+                    if (wineLogCallback[0] != null) {
+                        wineLogCallback[0].call("winlator: wineserver -w exited " + wsStatus);
+                    }
+                    finalTermination.call(wsStatus);
+                });
+
+                synchronized (lock) {
+                    pid = wsPid;
+                }
+
+                if (wsPid == -1) {
+                    if (wineLogCallback[0] != null) {
+                        wineLogCallback[0].call("winlator: failed to exec wineserver -w; exiting session");
+                    }
+                    finalTermination.call(0);
+                }
             });
         }
 
