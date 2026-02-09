@@ -592,7 +592,13 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             if (container.getStartupSelection() == Container.STARTUP_SELECTION_AGGRESSIVE) winHandler.killProcess("services.exe");
 
             boolean wow64Mode = container.isWoW64Mode();
-            String guestExecutable = wineInfo.getExecutable(this, wow64Mode)+" explorer /desktop=shell,"+xServer.screenInfo+" "+getWineStartCommand();
+            // Use Winlator's shim explorer (C:\\windows\\explorer.exe) rather than Wine's system32 explorer.
+            // Wine's built-in explorer can exit immediately under some WoW64/arm64ec configurations, causing
+            // the Android side to quit because we bind lifecycle to the guest process.
+            String guestExecutable =
+                    wineInfo.getExecutable(this, wow64Mode) +
+                    " C:\\\\windows\\\\explorer.exe /desktop=shell," + xServer.screenInfo + " " +
+                    getWineStartCommand();
             guestProgramLauncherComponent.setWoW64Mode(wow64Mode);
             guestProgramLauncherComponent.setGuestExecutable(guestExecutable);
 
@@ -1023,7 +1029,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         FileUtils.symlink(".."+FileUtils.toRelativePath(rootDir.getPath(), containerPatternDir.getPath()), linkFile.getPath());
 
         GuestProgramLauncherComponent guestProgramLauncherComponent = environment.getComponent(GuestProgramLauncherComponent.class);
-        guestProgramLauncherComponent.setGuestExecutable(wineInfo.getExecutable(this, false)+" explorer /desktop=shell,"+Container.DEFAULT_SCREEN_SIZE+" winecfg");
+        guestProgramLauncherComponent.setGuestExecutable(
+                wineInfo.getExecutable(this, false) +
+                " C:\\\\windows\\\\explorer.exe /desktop=shell," + Container.DEFAULT_SCREEN_SIZE + " winecfg"
+        );
 
         final PreloaderDialog preloaderDialog = new PreloaderDialog(this);
         guestProgramLauncherComponent.setTerminationCallback((status) -> Executors.newSingleThreadExecutor().execute(() -> {

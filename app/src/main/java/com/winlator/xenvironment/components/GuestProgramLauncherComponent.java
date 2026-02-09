@@ -386,6 +386,16 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
                 synchronized (wineLogWriter) {
                     wineLogWriter[0].write("----- Winlator arm64ec wine session: " + new java.util.Date().toString() + " -----");
                     wineLogWriter[0].newLine();
+                    // Record the exact argv we pass to Runtime.exec() to debug quoting/escaping regressions.
+                    try {
+                        String[] argv = ProcessHelper.splitCommand(command);
+                        StringBuilder argvLine = new StringBuilder();
+                        argvLine.append("ARGV:");
+                        for (String arg : argv) argvLine.append(" [").append(arg).append("]");
+                        wineLogWriter[0].write(argvLine.toString());
+                        wineLogWriter[0].newLine();
+                    }
+                    catch (Throwable ignored) {}
                     wineLogWriter[0].write("ENV: " + envVars.toString());
                     wineLogWriter[0].newLine();
                     wineLogWriter[0].flush();
