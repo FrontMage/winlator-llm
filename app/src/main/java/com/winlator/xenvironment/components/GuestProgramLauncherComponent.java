@@ -305,18 +305,9 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
                 this.envVars != null && this.envVars.has("FEX_DIAG_SIGILL");
         final boolean userSpecifiedDiagSmc =
                 this.envVars != null && this.envVars.has("FEX_DIAG_SMC");
-        final boolean userSpecifiedDiagCpuid =
-                this.envVars != null && this.envVars.has("FEX_DIAG_CPUID");
-        final boolean userSpecifiedDiagXcr =
-                this.envVars != null && this.envVars.has("FEX_DIAG_XCR");
-        final boolean userSpecifiedWoWProfile =
-                this.envVars != null && this.envVars.has("FEX_WOW_PROFILE");
         if (isArm64ecWine && wow64Mode) {
             if (!userSpecifiedDiagSigill) envVars.put("FEX_DIAG_SIGILL", "1");
             if (!userSpecifiedDiagSmc) envVars.put("FEX_DIAG_SMC", "1");
-            if (!userSpecifiedDiagCpuid) envVars.put("FEX_DIAG_CPUID", "1");
-            if (!userSpecifiedDiagXcr) envVars.put("FEX_DIAG_XCR", "1");
-            if (!userSpecifiedWoWProfile) envVars.put("FEX_WOW_PROFILE", "1");
         }
 
         if (isArm64ecWine) {
