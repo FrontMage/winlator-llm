@@ -314,8 +314,11 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         if (isArm64ecWine && wow64Mode) {
             if (!userSpecifiedDiagSigill) envVars.put("FEX_DIAG_SIGILL", "1");
             if (!userSpecifiedDiagSmc) envVars.put("FEX_DIAG_SMC", "1");
-            if (!userSpecifiedDiagCpuid) envVars.put("FEX_DIAG_CPUID", "1");
-            if (!userSpecifiedDiagXcr) envVars.put("FEX_DIAG_XCR", "1");
+            // CPUID/XCR diagnostics are extremely verbose and can materially impact startup timing,
+            // causing false negatives when debugging anti-cheat timing-sensitive code paths.
+            // Keep them off by default; enable per-test via shortcut env vars.
+            if (!userSpecifiedDiagCpuid) envVars.put("FEX_DIAG_CPUID", "0");
+            if (!userSpecifiedDiagXcr) envVars.put("FEX_DIAG_XCR", "0");
             if (!userSpecifiedWoWProfile) envVars.put("FEX_WOW_PROFILE", "1");
         }
 
@@ -338,10 +341,12 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
                 envVars.put("WINEDEBUG", "+loaddll,+err,+warn,+process");
             }
 
-            // Ensure we always capture useful exception context in wine.log.
-            // WoW's "ILLEGAL_INSTRUCTION" is often handled internally, so without +seh
-            // we don't see the original exception address/module.
-            if (wow64Mode) {
+            // Do NOT force-enable +seh/+unwind.
+            // These channels are extremely noisy under WoW64+FEX (unwind warnings from non-image
+            // memory like FEX return-instr pages) and can explode wine.log to multi-GB sizes,
+            // stalling container startup due to I/O. Enable explicitly when needed:
+            //   WINLATOR_WINEDEBUG_SEH_UNWIND=1
+            if (wow64Mode && "1".equals(envVars.get("WINLATOR_WINEDEBUG_SEH_UNWIND"))) {
                 String wineDebug = envVars.get("WINEDEBUG");
                 wineDebug = ensureWineDebugChannels(wineDebug, "seh", "unwind");
                 envVars.put("WINEDEBUG", wineDebug);
@@ -380,6 +385,10 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
             File wineLogFile = new File(externalLogDir, "wine.log");
             final BufferedWriter[] wineLogWriter = new BufferedWriter[1];
             final Callback<String>[] wineLogCallback = new Callback[1];
+            final long[] wineLogBytes = new long[]{0L};
+            final int[] wineLogLinesSinceFlush = new int[]{0};
+            final long[] wineLogLastFlushMs = new long[]{System.currentTimeMillis()};
+            final boolean[] wineLogCapped = new boolean[]{false};
             try {
                 // Always keep a persistent log on disk for FEX/arm64ec debugging.
                 // Rotate on every container launch so reproductions are easy to diff.
@@ -394,29 +403,66 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
                 }
                 wineLogWriter[0] = new BufferedWriter(new FileWriter(wineLogFile, false));
                 synchronized (wineLogWriter) {
-                    wineLogWriter[0].write("----- Winlator arm64ec wine session: " + new java.util.Date().toString() + " -----");
+                    String header = "----- Winlator arm64ec wine session: " + new java.util.Date().toString() + " -----";
+                    wineLogWriter[0].write(header);
                     wineLogWriter[0].newLine();
+                    wineLogBytes[0] += header.length() + 1;
                     // Record the exact argv we pass to Runtime.exec() to debug quoting/escaping regressions.
                     try {
                         String[] argv = ProcessHelper.splitCommand(command);
                         StringBuilder argvLine = new StringBuilder();
                         argvLine.append("ARGV:");
                         for (String arg : argv) argvLine.append(" [").append(arg).append("]");
-                        wineLogWriter[0].write(argvLine.toString());
+                        String argvStr = argvLine.toString();
+                        wineLogWriter[0].write(argvStr);
                         wineLogWriter[0].newLine();
+                        wineLogBytes[0] += argvStr.length() + 1;
                     }
                     catch (Throwable ignored) {}
-                    wineLogWriter[0].write("ENV: " + envVars.toString());
+                    String envStr = "ENV: " + envVars.toString();
+                    wineLogWriter[0].write(envStr);
                     wineLogWriter[0].newLine();
+                    wineLogBytes[0] += envStr.length() + 1;
                     wineLogWriter[0].flush();
                 }
                 wineLogCallback[0] = line -> {
                     if (wineLogWriter[0] == null) return;
                     synchronized (wineLogWriter) {
                         try {
+                            if (wineLogCapped[0]) return;
+
+                            // Hard cap to avoid pathological log spam stalling the session.
+                            // User can raise this if they need full traces.
+                            long maxBytes = 256L * 1024L * 1024L;
+                            String maxMb = envVars.get("WINLATOR_WINELOG_MAX_MB");
+                            if (maxMb != null) {
+                                try {
+                                    long mb = Long.parseLong(maxMb.trim());
+                                    if (mb > 0) maxBytes = mb * 1024L * 1024L;
+                                }
+                                catch (Throwable ignored) {}
+                            }
+
                             wineLogWriter[0].write(line);
                             wineLogWriter[0].newLine();
-                            wineLogWriter[0].flush();
+                            wineLogBytes[0] += line.length() + 1;
+                            wineLogLinesSinceFlush[0]++;
+
+                            if (wineLogBytes[0] >= maxBytes) {
+                                wineLogWriter[0].write("winlator: wine.log reached size cap (" + (maxBytes / (1024L * 1024L)) +
+                                        " MB); further log lines will be dropped.");
+                                wineLogWriter[0].newLine();
+                                wineLogWriter[0].flush();
+                                wineLogCapped[0] = true;
+                                return;
+                            }
+
+                            long now = System.currentTimeMillis();
+                            if (wineLogLinesSinceFlush[0] >= 128 || (now - wineLogLastFlushMs[0]) >= 1000) {
+                                wineLogWriter[0].flush();
+                                wineLogLinesSinceFlush[0] = 0;
+                                wineLogLastFlushMs[0] = now;
+                            }
                         }
                         catch (IOException ignored) {}
                     }
