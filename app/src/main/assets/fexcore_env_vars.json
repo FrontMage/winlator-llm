@@ -12,6 +12,11 @@
     {"name" : "FEX_VOLATILEMETADATA", "values" : ["0", "1"], "toggleswitch" : true, "defaultValue" : "1"},
     {"name" : "FEX_MONOHACKS", "values" : ["0", "1"], "toggleswitch" : true, "defaultValue" : "1"},
     {"name" : "FEX_HIDEHYPERVISORBIT", "values" : ["0", "1"], "toggleswitch" : true, "defaultValue" : "0"},
+    {"name" : "FEX_BNET_FORCE_X86", "values" : ["0", "1"], "toggleswitch" : true, "defaultValue" : "0"},
+    {"name" : "FEX_BNET_DETECT_LOG", "values" : ["0", "1"], "toggleswitch" : true, "defaultValue" : "0"},
+    {"name" : "FEX_BNET_ID_NTQUERYSYSTEMINFORMATION", "values" : ["0x9A"], "editText" : true, "defaultValue" : "0x9A"},
+    {"name" : "FEX_BNET_ID_NTQUERYINFORMATIONPROCESS", "values" : ["0x89"], "editText" : true, "defaultValue" : "0x89"},
+    {"name" : "FEX_BNET_ID_NTQUERYINFORMATIONTHREAD", "values" : ["0x8A"], "editText" : true, "defaultValue" : "0x8A"},
     {"name" : "FEX_DISABLEL2CACHE", "values" : ["0", "1"], "toggleswitch" : true, "defaultValue" : "0"},
     {"name" : "FEX_DYNAMICL1CACHE", "values" : ["0", "1"], "toggleswitch" : true, "defaultValue" : "0"}
 ]

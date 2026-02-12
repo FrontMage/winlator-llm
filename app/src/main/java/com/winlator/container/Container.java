@@ -23,7 +23,11 @@ public class Container {
             "ZINK_DESCRIPTORS=lazy ZINK_DEBUG=compact " +
             "MESA_SHADER_CACHE_DISABLE=false MESA_SHADER_CACHE_MAX_SIZE=512MB mesa_glthread=true " +
             "WINEESYNC=1 MESA_VK_WSI_PRESENT_MODE=mailbox " +
-            "TU_DEBUG=noconform,sysmem";
+            "TU_DEBUG=noconform,sysmem " +
+            "FEX_BNET_FORCE_X86=0 FEX_BNET_DETECT_LOG=0 " +
+            "FEX_BNET_ID_NTQUERYSYSTEMINFORMATION=0x9A " +
+            "FEX_BNET_ID_NTQUERYINFORMATIONPROCESS=0x89 " +
+            "FEX_BNET_ID_NTQUERYINFORMATIONTHREAD=0x8A";
     public static final String DEFAULT_SCREEN_SIZE = "1280x720";
     public static final String DEFAULT_GRAPHICS_DRIVER = "turnip";
     public static final String DEFAULT_AUDIO_DRIVER = "alsa";
