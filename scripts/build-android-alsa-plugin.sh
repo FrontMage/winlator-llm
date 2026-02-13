@@ -68,6 +68,7 @@ mkdir -p "$(dirname "${OUT_PATH}")"
 echo "Building: ${OUT_PATH}"
 "${clang}" \
   -shared -fPIC -O2 -Wall \
+  -DPIC \
   -I"${alsa_include}" \
   -Wl,-soname,libasound_module_pcm_android_aserver.so \
   "${REPO_ROOT}/audio_plugin/module_pcm_android_aserver.c" \

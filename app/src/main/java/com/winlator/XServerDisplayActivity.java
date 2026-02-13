@@ -88,7 +88,7 @@ import java.util.concurrent.Executors;
 
     public class XServerDisplayActivity extends AppCompatActivity implements NavigationView.OnNavigationItemSelectedListener {
         private static final String TAG_GUEST_DEBUG = "GuestDebug";
-    private static final int ROOTFS_UTILS_PATCH_VERSION = 2;
+    private static final int ROOTFS_UTILS_PATCH_VERSION = 3;
     // Bump when changing assets extracted by applyGeneralPatches() (e.g. imagefs_patches.tzst contents)
     // so existing containers re-apply patches without requiring appVersion/imgVersion changes.
     private static final int GENERAL_PATCH_VERSION = 2;
