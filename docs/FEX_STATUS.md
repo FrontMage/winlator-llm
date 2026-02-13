@@ -1,6 +1,21 @@
 # FEX-Only (arm64ec) Status / Debug Notes
 
-Date: 2026-02-08
+Last Updated: 2026-02-13
+
+## Snapshot: 2026-02-13 (Upstream FEX PR #5297 Merged)
+
+FEX Windows bridge build:
+- FEX commit: `1387aecce` (merge commit for upstream PR #5297)
+- Built `fexcore-2508.tzst`:
+  - sha256: `2a5f888cfc201f97fb88dfd2dac994a4218f44acec62384a03f0557ecad0f913`
+  - `libwow64fex.dll` md5: `10a0986a388fabe4314926faa50310bd`
+  - `libarm64ecfex.dll` md5: `f7b4182e295013466ccccd12cf4ebc22`
+
+Device/container verification:
+- Confirmed container prefix uses the new bridge DLLs (same md5 as above).
+
+Behavioral note:
+- This FEX build is the one that fixed the Turtle WoW login issue in our recent testing.
 
 This document is a running snapshot of the current **FEX-only** direction (Winlator as UI/container shell, using an **arm64ec Wine build + FEX WOW64 bridge**), what was changed, what is currently broken, and how we are debugging it.
 
