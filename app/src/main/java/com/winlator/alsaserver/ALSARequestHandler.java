@@ -7,6 +7,7 @@ import com.winlator.xconnector.XConnectorEpoll;
 import com.winlator.xconnector.XInputStream;
 import com.winlator.xconnector.XOutputStream;
 import com.winlator.xconnector.XStreamLock;
+import android.os.Process;
 import android.util.Log;
 
 import java.io.IOException;
@@ -15,9 +16,21 @@ import java.nio.ByteBuffer;
 public class ALSARequestHandler implements RequestHandler {
     private static final String TAG = "WinlatorALSA";
     private int maxSHMemoryId = 0;
+    private static final ThreadLocal<Boolean> audioPrioritySet = new ThreadLocal<>();
 
     @Override
     public boolean handleRequest(Client client) throws IOException {
+        // The ALSA server is time-sensitive. Give the handling thread audio priority to reduce underruns/stutter.
+        if (audioPrioritySet.get() == null) {
+            try {
+                Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO);
+            }
+            catch (Throwable ignored) {
+                // Best-effort: keep running even if priority cannot be adjusted on this device/OS build.
+            }
+            audioPrioritySet.set(Boolean.TRUE);
+        }
+
         ALSAClient alsaClient = (ALSAClient)client.getTag();
         XInputStream inputStream = client.getInputStream();
         XOutputStream outputStream = client.getOutputStream();

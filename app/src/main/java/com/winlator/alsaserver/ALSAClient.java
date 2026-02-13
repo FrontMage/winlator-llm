@@ -131,7 +131,7 @@ public class ALSAClient {
         release();
 
         if (!isValidBufferSize()) {
-            logDebug("prepare: invalid buffer size (" + bufferSize + "), frameBytes=" + frameBytes);
+            logDebug("prepare: invalid buffer size (" + bufferSize + ")");
             return;
         }
 
@@ -141,10 +141,29 @@ public class ALSAClient {
             .setChannelMask(getChannelConfig(channels))
             .build();
 
+        // The guest-selected buffer size can be too small for stable playback under load.
+        // Ensure AudioTrack has at least a couple of min-buffers worth of capacity to reduce underruns.
+        int minBufferBytes = 0;
+        try {
+            minBufferBytes = AudioTrack.getMinBufferSize(sampleRate, getChannelConfig(channels), getPCMEncoding(dataType));
+        }
+        catch (Throwable ignored) {
+            minBufferBytes = 0;
+        }
+        int requestedBytes = getBufferSizeInBytes();
+        int targetBytes = requestedBytes;
+        if (minBufferBytes > 0) {
+            targetBytes = Math.max(targetBytes, minBufferBytes * 2);
+        }
+        // Align to frameBytes so we don't accidentally create partial frames.
+        if (frameBytes > 0) {
+            targetBytes = (targetBytes / frameBytes) * frameBytes;
+        }
+
         audioTrack = new AudioTrack.Builder()
             .setPerformanceMode(options.performanceMode)
             .setAudioFormat(format)
-            .setBufferSizeInBytes(getBufferSizeInBytes())
+            .setBufferSizeInBytes(targetBytes)
             .build();
 
         if (audioTrack.getState() != AudioTrack.STATE_INITIALIZED) {
@@ -272,7 +291,8 @@ public class ALSAClient {
     }
 
     private boolean isValidBufferSize() {
-        return (bufferSize % frameBytes == 0) && bufferSize > 0;
+        // bufferSize is expressed in frames (from io->buffer_size in the ALSA ioplug).
+        return bufferSize > 0;
     }
 
     private void increaseBufferSizeIfUnderrunOccurs() {
