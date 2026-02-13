@@ -86,9 +86,12 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.concurrent.Executors;
 
-public class XServerDisplayActivity extends AppCompatActivity implements NavigationView.OnNavigationItemSelectedListener {
-    private static final String TAG_GUEST_DEBUG = "GuestDebug";
-    private static final int ROOTFS_UTILS_PATCH_VERSION = 1;
+    public class XServerDisplayActivity extends AppCompatActivity implements NavigationView.OnNavigationItemSelectedListener {
+        private static final String TAG_GUEST_DEBUG = "GuestDebug";
+    private static final int ROOTFS_UTILS_PATCH_VERSION = 2;
+    // Bump when changing assets extracted by applyGeneralPatches() (e.g. imagefs_patches.tzst contents)
+    // so existing containers re-apply patches without requiring appVersion/imgVersion changes.
+    private static final int GENERAL_PATCH_VERSION = 2;
     private XServerView xServerView;
     private InputControlsView inputControlsView;
     private TouchpadView touchpadView;
@@ -415,6 +418,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     private void setupWineSystemFiles() {
         String appVersion = String.valueOf(AppUtils.getVersionCode(this));
         String imgVersion = String.valueOf(imageFs.getVersion());
+        String generalPatchVersion = String.valueOf(GENERAL_PATCH_VERSION);
         boolean containerDataChanged = false;
 
         // FEX-only / arm64ec robustness: some prefixes are created before the selected Wine is fully
@@ -422,10 +426,15 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         // (kernel32, winemenubuilder, etc.) and cause immediate startup failure.
         ensureWineBuiltinsInPrefix();
 
-        if (!container.getExtra("appVersion").equals(appVersion) || !container.getExtra("imgVersion").equals(imgVersion)) {
+        boolean needGeneralPatches =
+                !container.getExtra("appVersion").equals(appVersion) ||
+                !container.getExtra("imgVersion").equals(imgVersion) ||
+                !container.getExtra("generalPatchVersion").equals(generalPatchVersion);
+        if (needGeneralPatches) {
             applyGeneralPatches(container);
             container.putExtra("appVersion", appVersion);
             container.putExtra("imgVersion", imgVersion);
+            container.putExtra("generalPatchVersion", generalPatchVersion);
             containerDataChanged = true;
         }
 
@@ -1279,7 +1288,9 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 {"rootfs-utils/aarch64/usr/bin/env", "/usr/bin/env"},
                 {"rootfs-utils/aarch64/usr/bin/cat", "/usr/bin/cat"},
                 {"rootfs-utils/aarch64/bin/cat", "/bin/cat"},
-                {"rootfs-utils/aarch64/usr/bin/lscpu", "/usr/bin/lscpu"}
+                {"rootfs-utils/aarch64/usr/bin/lscpu", "/usr/bin/lscpu"},
+                // Bionic-compatible ALSA PCM plugin for the Android ALSA server.
+                {"rootfs-utils/aarch64/usr/lib/alsa-lib/libasound_module_pcm_android_aserver.so", "/usr/lib/alsa-lib/libasound_module_pcm_android_aserver.so"}
         };
 
         for (String[] patch : patches) {
