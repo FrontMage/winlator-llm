@@ -1,0 +1,347 @@
+package com.winlator;
+
+import android.app.Activity;
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.net.Uri;
+import android.os.Bundle;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.ArrayAdapter;
+import android.widget.CheckBox;
+import android.widget.EditText;
+import android.widget.LinearLayout;
+import android.widget.SeekBar;
+import android.widget.Spinner;
+import android.widget.TextView;
+
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.fragment.app.Fragment;
+import androidx.fragment.app.FragmentManager;
+import androidx.preference.PreferenceManager;
+
+import com.google.android.material.navigation.NavigationView;
+import com.winlator.container.Container;
+import com.winlator.container.ContainerManager;
+import com.winlator.contentdialog.ContentDialog;
+import com.winlator.core.AppUtils;
+import com.winlator.core.ArrayUtils;
+import com.winlator.core.Callback;
+import com.winlator.core.FileUtils;
+import com.winlator.core.PreloaderDialog;
+import com.winlator.core.StringUtils;
+import com.winlator.core.WineInfo;
+import com.winlator.core.WineUtils;
+import com.winlator.xenvironment.ImageFs;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+
+import java.io.File;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.Executors;
+
+public class SettingsFragment extends Fragment {
+    public static final String DEFAULT_WINE_DEBUG_CHANNELS = "warn,err,fixme";
+    private static final String LEGACY_WINE_DEBUG_CHANNELS = "warn,err,fixme";
+    private static final String PREVIOUS_WINE_DEBUG_CHANNELS = "warn,err";
+    private static final String PREVIOUS_WINE_DEBUG_CHANNELS_WITH_SEH = "warn,err,loaddll,seh,timestamp,ntlm,secur32,msv1_0";
+    private static final String PREVIOUS_WINE_DEBUG_CHANNELS_WITHOUT_SEH = "warn,err,loaddll,timestamp,ntlm,secur32,msv1_0";
+    private Callback<Uri> selectWineFileCallback;
+    private PreloaderDialog preloaderDialog;
+    private SharedPreferences preferences;
+
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setHasOptionsMenu(false);
+        preloaderDialog = new PreloaderDialog(getActivity());
+    }
+
+    @Override
+    public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
+        super.onViewCreated(view, savedInstanceState);
+        ((AppCompatActivity)getActivity()).getSupportActionBar().setTitle(R.string.settings);
+    }
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        if (requestCode == MainActivity.OPEN_FILE_REQUEST_CODE && resultCode == Activity.RESULT_OK) {
+            try {
+                if (selectWineFileCallback != null && data != null) selectWineFileCallback.call(data.getData());
+            }
+            catch (Exception e) {
+                AppUtils.showToast(getContext(), R.string.unable_to_import_profile);
+            }
+            selectWineFileCallback = null;
+        }
+    }
+
+    @Nullable
+    @Override
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
+        View view = inflater.inflate(R.layout.settings_fragment, container, false);
+        final Context context = getContext();
+        preferences = PreferenceManager.getDefaultSharedPreferences(context);
+
+        final CheckBox cbUseDRI3 = view.findViewById(R.id.CBUseDRI3);
+        cbUseDRI3.setChecked(preferences.getBoolean("use_dri3", true));
+
+        final CheckBox cbEnableWineDebug = view.findViewById(R.id.CBEnableWineDebug);
+        cbEnableWineDebug.setChecked(preferences.getBoolean("enable_wine_debug", false));
+
+        String storedDebugChannels = preferences.getString("wine_debug_channels", null);
+        if (LEGACY_WINE_DEBUG_CHANNELS.equals(storedDebugChannels)
+                || PREVIOUS_WINE_DEBUG_CHANNELS.equals(storedDebugChannels)
+                || PREVIOUS_WINE_DEBUG_CHANNELS_WITHOUT_SEH.equals(storedDebugChannels)
+                || PREVIOUS_WINE_DEBUG_CHANNELS_WITH_SEH.equals(storedDebugChannels)) {
+            preferences.edit().putString("wine_debug_channels", DEFAULT_WINE_DEBUG_CHANNELS).apply();
+            storedDebugChannels = DEFAULT_WINE_DEBUG_CHANNELS;
+        }
+        final ArrayList<String> wineDebugChannels = new ArrayList<>(Arrays.asList((storedDebugChannels != null ? storedDebugChannels : DEFAULT_WINE_DEBUG_CHANNELS).split(",")));
+        loadWineDebugChannels(view, wineDebugChannels);
+
+        final CheckBox cbEnableAlsaDebug = view.findViewById(R.id.CBEnableAlsaDebug);
+        cbEnableAlsaDebug.setChecked(preferences.getBoolean("enable_alsa_debug", false));
+
+        final CheckBox cbEnableDxvkLog = view.findViewById(R.id.CBEnableDxvkLog);
+        cbEnableDxvkLog.setChecked(preferences.getBoolean("enable_dxvk_log", false));
+
+        final CheckBox cbEnableWrapperLog = view.findViewById(R.id.CBEnableWrapperLog);
+        cbEnableWrapperLog.setChecked(preferences.getBoolean("enable_wrapper_log", false));
+
+        final Spinner sWrapperLogLevel = view.findViewById(R.id.SWrapperLogLevel);
+        AppUtils.setSpinnerSelectionFromIdentifier(
+                sWrapperLogLevel,
+                preferences.getString("wrapper_log_level", "debug")
+        );
+        sWrapperLogLevel.setEnabled(cbEnableWrapperLog.isChecked());
+        cbEnableWrapperLog.setOnCheckedChangeListener((buttonView, isChecked) -> sWrapperLogLevel.setEnabled(isChecked));
+
+        final TextView tvCursorSpeed = view.findViewById(R.id.TVCursorSpeed);
+        final SeekBar sbCursorSpeed = view.findViewById(R.id.SBCursorSpeed);
+        sbCursorSpeed.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                tvCursorSpeed.setText(progress+"%");
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {}
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {}
+        });
+        sbCursorSpeed.setProgress((int)(preferences.getFloat("cursor_speed", 1.0f) * 100));
+
+        loadInstalledWineList(view);
+
+        view.findViewById(R.id.BTSelectWineFile).setOnClickListener((v) -> {
+            ContentDialog.alert(context, R.string.msg_warning_install_wine, this::selectWineFileForInstall);
+        });
+
+        view.findViewById(R.id.BTConfirm).setOnClickListener((v) -> {
+            SharedPreferences.Editor editor = preferences.edit();
+            editor.putBoolean("use_dri3", cbUseDRI3.isChecked());
+            editor.putFloat("cursor_speed", sbCursorSpeed.getProgress() / 100.0f);
+            editor.putBoolean("enable_wine_debug", cbEnableWineDebug.isChecked());
+            editor.putBoolean("enable_alsa_debug", cbEnableAlsaDebug.isChecked());
+            editor.putBoolean("enable_dxvk_log", cbEnableDxvkLog.isChecked());
+            editor.putBoolean("enable_wrapper_log", cbEnableWrapperLog.isChecked());
+            editor.putString("wrapper_log_level", StringUtils.parseIdentifier(sWrapperLogLevel.getSelectedItem()));
+
+            if (!wineDebugChannels.isEmpty()) {
+                editor.putString("wine_debug_channels", String.join(",", wineDebugChannels));
+            }
+            else if (preferences.contains("wine_debug_channels")) editor.remove("wine_debug_channels");
+
+            if (editor.commit()) {
+                NavigationView navigationView = getActivity().findViewById(R.id.NavigationView);
+                navigationView.setCheckedItem(R.id.main_menu_containers);
+                FragmentManager fragmentManager = getParentFragmentManager();
+                fragmentManager.beginTransaction()
+                    .replace(R.id.FLFragmentContainer, new ContainersFragment())
+                    .commit();
+            }
+        });
+
+        return view;
+    }
+
+    private void removeInstalledWine(WineInfo wineInfo, Runnable onSuccess) {
+        final Activity activity = getActivity();
+        ContainerManager manager = new ContainerManager(activity);
+
+        ArrayList<Container> containers = manager.getContainers();
+        for (Container container : containers) {
+            if (container.getWineVersion().equals(wineInfo.identifier())) {
+                AppUtils.showToast(activity, R.string.unable_to_remove_this_wine_version);
+                return;
+            }
+        }
+
+        String suffix = wineInfo.fullVersion()+"-"+wineInfo.getArch();
+        File installedWineDir = ImageFs.find(activity).getInstalledWineDir();
+        File wineDir = new File(wineInfo.path);
+        File containerPatternFile = new File(installedWineDir, "container-pattern-"+suffix+".tzst");
+
+        if (!wineDir.isDirectory() || !containerPatternFile.isFile()) {
+            AppUtils.showToast(activity, R.string.unable_to_remove_this_wine_version);
+            return;
+        }
+
+        preloaderDialog.show(R.string.removing_wine);
+        Executors.newSingleThreadExecutor().execute(() -> {
+            FileUtils.delete(wineDir);
+            FileUtils.delete(containerPatternFile);
+            preloaderDialog.closeOnUiThread();
+            if (onSuccess != null) activity.runOnUiThread(onSuccess);
+        });
+    }
+
+    private void loadInstalledWineList(final View view) {
+        Context context = getContext();
+        LinearLayout container = view.findViewById(R.id.LLInstalledWineList);
+        container.removeAllViews();
+        ArrayList<WineInfo> wineInfos = WineUtils.getInstalledWineInfos(context);
+
+        LayoutInflater inflater = LayoutInflater.from(context);
+        for (final WineInfo wineInfo : wineInfos) {
+            View itemView = inflater.inflate(R.layout.installed_wine_list_item, container, false);
+            ((TextView)itemView.findViewById(R.id.TVTitle)).setText(wineInfo.toString());
+            if (wineInfo != WineInfo.MAIN_WINE_VERSION) {
+                View removeButton = itemView.findViewById(R.id.BTRemove);
+                removeButton.setVisibility(View.VISIBLE);
+                removeButton.setOnClickListener((v) -> {
+                    ContentDialog.confirm(getContext(), R.string.do_you_want_to_remove_this_wine_version, () -> {
+                        removeInstalledWine(wineInfo, () -> loadInstalledWineList(view));
+                    });
+                });
+            }
+            container.addView(itemView);
+        }
+    }
+
+    private void selectWineFileForInstall() {
+        final Context context = getContext();
+        selectWineFileCallback = (uri) -> {
+            preloaderDialog.show(R.string.preparing_installation);
+            WineUtils.extractWineFileForInstallAsync(context, uri, (wineDir) -> {
+                if (wineDir != null) {
+                    WineUtils.findWineVersionAsync(context, wineDir, (wineInfo) -> {
+                        preloaderDialog.closeOnUiThread();
+                        if (wineInfo == null) {
+                            AppUtils.showToast(context, R.string.unable_to_install_wine);
+                            return;
+                        }
+
+                        getActivity().runOnUiThread(() -> showWineInstallOptionsDialog(wineInfo));
+                    });
+                }
+                else {
+                    AppUtils.showToast(context, R.string.unable_to_install_wine);
+                    preloaderDialog.closeOnUiThread();
+                }
+            });
+        };
+
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
+        getActivity().startActivityFromFragment(this, intent, MainActivity.OPEN_FILE_REQUEST_CODE);
+    }
+
+    private void installWine(final WineInfo wineInfo) {
+        Context context = getContext();
+        File installedWineDir = ImageFs.find(context).getInstalledWineDir();
+
+        File wineDir = new File(installedWineDir, wineInfo.identifier());
+        if (wineDir.isDirectory()) {
+            AppUtils.showToast(context, R.string.unable_to_install_wine);
+            return;
+        }
+
+        Intent intent = new Intent(context, XServerDisplayActivity.class);
+        intent.putExtra("generate_wineprefix", true);
+        intent.putExtra("wine_info", wineInfo);
+        context.startActivity(intent);
+    }
+
+    private void showWineInstallOptionsDialog(final WineInfo wineInfo) {
+        Context context = getContext();
+        ContentDialog dialog = new ContentDialog(context, R.layout.wine_install_options_dialog);
+        dialog.setCancelable(false);
+        dialog.setCanceledOnTouchOutside(false);
+        dialog.setTitle(R.string.install_wine);
+        dialog.setIcon(R.drawable.icon_wine);
+
+        EditText etVersion = dialog.findViewById(R.id.ETVersion);
+        etVersion.setText("Wine "+wineInfo.version+(wineInfo.subversion != null ? " ("+wineInfo.subversion+")" : ""));
+
+        Spinner sArch = dialog.findViewById(R.id.SArch);
+        List<String> archList = wineInfo.isWin64() ? Arrays.asList("x86", "x86_64") : Arrays.asList("x86");
+        sArch.setAdapter(new ArrayAdapter<>(context, android.R.layout.simple_spinner_dropdown_item, archList));
+        sArch.setSelection(archList.size()-1);
+
+        dialog.setOnConfirmCallback(() -> {
+            wineInfo.setArch(sArch.getSelectedItem().toString());
+            installWine(wineInfo);
+        });
+        dialog.show();
+    }
+
+    private void loadWineDebugChannels(final View view, final ArrayList<String> debugChannels) {
+        final Context context = getContext();
+        LinearLayout container = view.findViewById(R.id.LLWineDebugChannels);
+        container.removeAllViews();
+
+        LayoutInflater inflater = LayoutInflater.from(context);
+        View itemView = inflater.inflate(R.layout.wine_debug_channel_list_item, container, false);
+        itemView.findViewById(R.id.TextView).setVisibility(View.GONE);
+        itemView.findViewById(R.id.BTRemove).setVisibility(View.GONE);
+
+        View addButton = itemView.findViewById(R.id.BTAdd);
+        addButton.setVisibility(View.VISIBLE);
+        addButton.setOnClickListener((v) -> {
+            JSONArray jsonArray = null;
+            try {
+                jsonArray = new JSONArray(FileUtils.readString(context, "wine_debug_channels.json"));
+            }
+            catch (JSONException e) {}
+
+            final String[] items = ArrayUtils.toStringArray(jsonArray);
+            ContentDialog.showMultipleChoiceList(context, R.string.wine_debug_channel, items, (selectedPositions) -> {
+                for (int selectedPosition : selectedPositions) if (!debugChannels.contains(items[selectedPosition])) debugChannels.add(items[selectedPosition]);
+                loadWineDebugChannels(view, debugChannels);
+            });
+        });
+
+        View resetButton = itemView.findViewById(R.id.BTReset);
+        resetButton.setVisibility(View.VISIBLE);
+        resetButton.setOnClickListener((v) -> {
+            debugChannels.clear();
+            debugChannels.addAll(Arrays.asList(DEFAULT_WINE_DEBUG_CHANNELS.split(",")));
+            loadWineDebugChannels(view, debugChannels);
+        });
+        container.addView(itemView);
+
+        for (int i = 0; i < debugChannels.size(); i++) {
+            itemView = inflater.inflate(R.layout.wine_debug_channel_list_item, container, false);
+            TextView textView = itemView.findViewById(R.id.TextView);
+            textView.setText(debugChannels.get(i));
+            final int index = i;
+            itemView.findViewById(R.id.BTRemove).setOnClickListener((v) -> {
+                debugChannels.remove(index);
+                loadWineDebugChannels(view, debugChannels);
+            });
+            container.addView(itemView);
+        }
+    }
+
+}

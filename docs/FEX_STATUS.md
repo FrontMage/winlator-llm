@@ -1,0 +1,370 @@
+# FEX-Only (arm64ec) Status / Debug Notes
+
+Last Updated: 2026-02-14
+
+## Snapshot: 2026-02-13 (Upstream FEX PR #5297 Merged)
+
+FEX Windows bridge build:
+- FEX commit: `1387aecce` (merge commit for upstream PR #5297)
+- Built `fexcore-2508.tzst`:
+  - sha256: `2a5f888cfc201f97fb88dfd2dac994a4218f44acec62384a03f0557ecad0f913`
+  - `libwow64fex.dll` md5: `10a0986a388fabe4314926faa50310bd`
+  - `libarm64ecfex.dll` md5: `f7b4182e295013466ccccd12cf4ebc22`
+
+Device/container verification:
+- Confirmed container prefix uses the new bridge DLLs (same md5 as above).
+
+Behavioral note:
+- This FEX build is the one that fixed the Turtle WoW login issue in our recent testing.
+
+## Ludashi vs CMOD: FEXCore-2508 (Binaries + Env Deltas)
+
+We observed a WoW crash on Ludashi described as "invalid memory address". Before attributing this to a runtime env
+toggle, note that **the shipped FEX bridge DLLs differ substantially** between Ludashi and our build.
+
+### Packaged FEXCore-2508 asset comparison
+
+CMOD (`app/src/main/assets/fexcore/fexcore-2508.tzst`):
+- tzst sha256: `2a5f888cfc201f97fb88dfd2dac994a4218f44acec62384a03f0557ecad0f913`
+- `libwow64fex.dll`: md5 `10a0986a388fabe4314926faa50310bd`, size `4,489,216`
+- `libarm64ecfex.dll`: md5 `f7b4182e295013466ccccd12cf4ebc22`, size `5,001,216`
+
+Ludashi (`third_party/Winlator-Ludashi/app/src/main/assets/fexcore/fexcore-2508.tzst`):
+- tzst sha256: `84b3fd9536b9ce8173663ac383e3072d791685d5a156c724a105a6f6974b3b9a`
+- `libwow64fex.dll`: md5 `9c31c104412458919236a9a129d55243`, size `8,228,864`
+- `libarm64ecfex.dll`: md5 `8ee699e0208c96907919fb6711a7582c`, size `9,678,848`
+
+Implication:
+- Even with identical `FEX_*` env vars, Ludashi and CMOD are not testing the same bridge code path. A memory access
+  violation ("invalid memory address") can plausibly come from bridge binary differences.
+
+### FEX env deltas seen in Ludashi launch log
+
+From the provided Ludashi env snapshot, the main FEX toggle delta vs our usual container env is:
+- Ludashi: `FEX_X87REDUCEDPRECISION=1`
+- CMOD (typical): `FEX_X87REDUCEDPRECISION=0`
+
+CMOD code note:
+- Our launcher currently normalizes `FEX_X87REDUCEDPRECISION=1` to `0` at runtime in
+  `app/src/main/java/com/winlator/xenvironment/components/GuestProgramLauncherComponent.java`.
+  So even if the container preset requests `1`, the effective env observed by Wine will be `0` unless the launcher logic
+  is changed.
+
+Additional CMOD-only defaults (when not explicitly set by the container/env page):
+- `FEX_SMC_CHECKS=mtrack`
+- `FEX_SILENTLOG=1`
+- `FEX_HIDEHYPERVISORBIT=1`
+- `FEX_DIAG_SIGILL=0`, `FEX_DIAG_SMC=0`
+
+Ludashi does not appear to set these in its Java-side env builder (so FEX defaults apply there).
+
+Note:
+- This is a floating-point precision toggle. It's not the first suspect for a pointer crash, but it is an easy A/B:
+  set `FEX_X87REDUCEDPRECISION=0` on Ludashi and see if the failure mode changes.
+
+Suggested isolation steps:
+1) Keep Ludashi app build, but replace its `libwow64fex.dll` + `libarm64ecfex.dll` with CMOD's versions and re-test WoW.
+2) Keep Ludashi DLLs, toggle only `FEX_X87REDUCEDPRECISION` and re-test WoW.
+
+### FEX env deltas (observed on device, 2026-02-14)
+
+We captured a real launch env from device logcat (`D/ProcessHelper: env: [...]`) after installing
+`out/apks/ludashi_fexcore2508_ORIGINAL.apk` (note: Ludashi project uses `applicationId=com.winlator.cmod`, so this
+overwrites CMOD on-device).
+
+Bridge DLLs in the container (device md5):
+- `libwow64fex.dll`: `9c31c104412458919236a9a129d55243`
+- `libarm64ecfex.dll`: `8ee699e0208c96907919fb6711a7582c`
+
+Key env differences vs our CMOD run log `logs/black_screen_stability2-20260213-220737/wine.log`:
+- FEX toggles: Ludashi enables `FEX_VECTORTSOENABLED=1`, `FEX_MEMCPYSETTSOENABLED=1` (CMOD log had both `0`).
+- CMOD-only injected defaults (present in CMOD log, absent in Ludashi logcat env): `FEX_SMC_CHECKS=mtrack`, `FEX_SILENTLOG=1`, `FEX_HIDEHYPERVISORBIT=1`, `FEX_DIAG_SIGILL=0`, `FEX_DIAG_SMC=0`.
+- CMOD-only injected defaults (present in CMOD log, absent in Ludashi logcat env): `FEX_BNET_*` detection vars.
+- Wrapper / Mesa deltas in that run (Ludashi): `mesa_glthread=true`, `MESA_VK_WSI_PRESENT_MODE=mailbox`, `WRAPPER_RESOURCE_TYPE=auto`, `WRAPPER_MAX_IMAGE_COUNT=0`.
+- Wrapper / Mesa deltas in that run (CMOD log): `mesa_glthread=false`, `MESA_VK_WSI_PRESENT_MODE=fifo`, `WRAPPER_RESOURCE_TYPE=buffer`, `WRAPPER_MAX_IMAGE_COUNT=2`.
+
+This document is a running snapshot of the current **FEX-only** direction (Winlator as UI/container shell, using an **arm64ec Wine build + FEX WOW64 bridge**), what was changed, what is currently broken, and how we are debugging it.
+
+Scope:
+- Only FEX / arm64ec Wine startup path and related packaging/logging.
+- This doc intentionally does **not** cover Box64/Battle.net/NTLM workstreams unless they intersect this startup path.
+
+## Goal
+
+Make containers run using:
+- `wine-10.0-arm64ec` (aarch64 PE DLLs + arm64ec loader behavior)
+- FEX wow64 bridge DLLs (from `assets/fexcore/*.tzst`), so that running x86_64 Windows binaries is possible via Wine’s WOW64 layer.
+
+Avoid:
+- PRoot-based guest launcher for the arm64ec path (align with the bionic-derived implementation that launches Wine directly).
+
+## Current Symptom (Historical, Fixed)
+
+Container startup used to flash and exit (UI returns to launcher). The guest process terminated quickly with status `53`.
+
+From `/storage/emulated/0/Download/Winlator/wine.log`:
+- Wine starts (esync banner appears).
+- Some modules are loaded (kernelbase/kernel32/etc).
+- Then it fails again with:
+  `wine: could not load kernel32.dll, status c0000135`
+
+This was confusing because the log also contained successful `loaddll` lines for `kernel32.dll` earlier in the same run.
+
+## Current Status (Now)
+
+- Containers boot and stay running on the **FEX-only / arm64ec** path.
+- `wfm.exe` and built-in helper apps launch (mono installer / D3D tests, etc).
+- Drive mapping and the startup popup logic were fixed earlier; focus has moved to graphics stability.
+
+## Current Blocker: WoW ILLEGAL_INSTRUCTION (0xC000001D)
+
+Some WoW builds still fail with a Wine fatal error dialog reporting:
+- `Exception: 0xC000001D (ILLEGAL_INSTRUCTION)`
+
+This is ambiguous without extra instrumentation: it can mean either
+1) The guest executed an instruction not supported by the translated CPU view (CPUID mismatch / feature gating), or
+2) FEX encountered an unimplemented guest opcode and raised SIGILL which it then converts to `EXCEPTION_ILLEGAL_INSTRUCTION`.
+
+### Debug Instrumentation (Added)
+
+1. Wine exception logging (always visible in our persistent log):
+   - We ensure `WINEDEBUG` contains `+seh,+unwind` for arm64ec WoW64 sessions so the log includes exception address/module.
+
+2. FEX bridge SIGILL logging:
+   - The FEX Windows bridge logs when it converts SIGILL into `EXCEPTION_ILLEGAL_INSTRUCTION`:
+     - `SIGILL -> EXCEPTION_ILLEGAL_INSTRUCTION: GuestIP=0x... TrapNo=... err=0x...`
+
+Both end up in:
+- `/storage/emulated/0/Download/Winlator/wine.log` (latest run)
+- plus rotated copies: `wine-YYYYMMDD-HHMMSS.log`
+
+### Root Cause (Confirmed) and Fix (Shipped)
+
+One WoW repro was traced to a valid x87 opcode that FEX marked as invalid:
+
+- Faulting bytes (WoW.exe): `DC D8`
+  - Disassembles to: `fcomp st(0), st(0)` (x87 compare + pop)
+- Wine exception: `0xC000001D` at `0023:006FA876`
+- FEX log: `Invalid instruction in entry block: 6FA876`
+
+Fix:
+- Implement `0xDC D0..D7` (`FCOM ST(i)`) and `0xDC D8..DF` (`FCOMP ST(i)`) in FEX x87 tables.
+- Update the shipped `fexcore-2508.tzst` so containers pick up the new bridge DLLs.
+
+Status:
+- Code fix is in the local `third_party/FEX` tree and the updated `fexcore-2508.tzst` was rebuilt and packaged.
+- Next step is to re-run WoW and confirm the crash moves past the previous `GuestIP=0x6FA876` point (and see if any new missing opcode is hit).
+
+## Current Blocker: DXVK Black Screen / Hang (Turnip + Wrapper)
+
+DXVK no longer fails immediately, but D3D tests can show **black screen** and/or appear to **hang** around swapchain creation.
+
+Key evidence from `/storage/emulated/0/Download/Winlator/wine.log`:
+- WineVulkan + DXVK initialize successfully.
+- X11 surface creation succeeds:
+  - `X11DRV_vulkan_surface_create Created surface ...`
+- DXVK reports swapchain properties, then the log stops around `vkCreateSwapchainKHR`:
+  - `Presenter: Actual swap chain properties: ... Image count: 4 ...`
+
+Key evidence from `/storage/emulated/0/Download/Winlator/TestD3D_d3d9.log`:
+- DXVK sees a Vulkan 1.3-capable adapter:
+  - `Wrapper(Turnip Adreno (TM) 650)`
+
+### Root Causes We Already Fixed (DXVK bring-up)
+
+1. Missing WSI path:
+   - DXVK previously reported `Required Vulkan extension VK_KHR_surface not supported`.
+   - Fix: force `VK_ICD_FILENAMES` to `wrapper_icd.aarch64.json` for `graphicsDriver=turnip` and ship wrapper assets.
+
+2. Wrong/invalid Vulkan driver selection:
+   - Forcing Linux Mesa `libvulkan_freedreno.so` caused loader/link errors on Android (e.g. missing `libdrm.so.2`).
+   - Fix: use **Adrenotools** Android driver `vulkan.ad07xx.so` from `adrenotools-turnip25.1.0.tzst`.
+
+### Alignment Work In Progress (Ludashi/bionic)
+
+We found remaining deltas vs `third_party/Winlator-Ludashi` that may affect presentation:
+- Missing wrapper env defaults (e.g. `WRAPPER_DISABLE_PRESENT_WAIT`, `WRAPPER_MAX_IMAGE_COUNT`, `WRAPPER_RESOURCE_TYPE`, extension blacklist).
+- Missing `graphics_driver/zink_dlls.tzst` extraction into the prefix on first boot for arm64ec.
+
+Next step is to keep tightening wrapper+WSI defaults to match Ludashi behavior and iterate based on `wine.log` + DXVK logs.
+
+## New Finding (Most Likely Root Cause)
+
+Filesystem checks on device showed the prefix did **not** contain core built-in DLLs/exes under:
+- `C:\\windows\\system32\\kernel32.dll`
+- `C:\\windows\\syswow64\\kernel32.dll`
+- `C:\\windows\\system32\\winemenubuilder.exe`
+
+Even though the Wine installation directory does contain them under:
+- `<wine>/lib/wine/aarch64-windows/`
+- `<wine>/lib/wine/i386-windows/`
+
+This points to the prefix being created before the selected Wine package was fully installed/extracted into `imagefs/opt/`,
+so the “copy builtins into prefix” step was skipped (because the source dir didn’t exist yet).
+
+## Repro Steps (Current)
+
+1. Install APK (force uninstall first):
+   - `./scripts/build-apk-install.sh -f`
+2. Launch Winlator.
+3. Start any container (default arm64ec Wine is selected by current defaults).
+4. After it exits, pull logs:
+   - `adb shell cat /storage/emulated/0/Download/Winlator/wine.log`
+   - Optional: `adb logcat -d | rg "GuestLauncher|GuestDebug|wine:"`
+
+## What We Changed So Far
+
+### 1) Package / install targeting
+
+We updated the install script to avoid installing over the wrong package name.
+
+- `scripts/build-apk-install.sh`
+  - `-f/--force` now uninstalls **both** `com.winlator` and `com.winlator.cmod` before install.
+
+We also verified via adb that only `com.winlator.cmod` is present after force-install:
+- `adb shell pm list packages | rg winlator`
+
+### 1.5) Container prefix extraction (align with bionic/Ludashi)
+
+We aligned non-main Wine container creation with the bionic/Ludashi approach:
+- Prefer extracting a per-wine container pattern asset (`<wineVersion>_container_pattern.tzst`) when present.
+- Fallback to extracting `prefixPack.txz` shipped inside the installed Wine directory (e.g. `<rootfs>/opt/wine-10.0-arm64ec/prefixPack.txz`).
+- After extraction, populate `C:\\windows\\system32` and `C:\\windows\\syswow64` by copying built-in Wine PE DLL sets from:
+  - arm64ec: `<wine>/lib/wine/aarch64-windows` -> `system32`
+  - all: `<wine>/lib/wine/i386-windows` -> `syswow64`
+
+This matches how bionic/Ludashi avoids “thin prefix” failures (missing `kernel32.dll`/core DLLs in prefix).
+
+We also added a matching per-wine pattern asset for the current default arm64ec build:
+- `app/src/main/assets/wine-10.0-arm64ec_container_pattern.tzst` (generated from `prefixPack.txz` inside the preinstalled Wine package)
+
+### 2) arm64ec launch path: direct Wine execution
+
+The arm64ec path was moved to “direct exec” (no proot command wrapper), and the environment was aligned to the bionic-derived implementation:
+
+- `app/src/main/java/com/winlator/xenvironment/components/GuestProgramLauncherComponent.java`
+  - arm64ec uses **absolute** rootfs paths:
+    - `HOME=/data/user/0/<pkg>/files/imagefs/home/xuser`
+    - `WINEPREFIX=/data/user/0/<pkg>/files/imagefs/home/xuser/.wine`
+    - `TMPDIR=/data/user/0/<pkg>/files/imagefs/usr/tmp`
+  - arm64ec sets “bionic style” runtime env:
+    - `PATH=<rootfs>/opt/wine-10.0-arm64ec/bin:<rootfs>/usr/bin`
+    - `LD_LIBRARY_PATH=<rootfs>/usr/lib:/system/lib64`
+    - `LD_PRELOAD=<rootfs>/usr/lib/libandroid-sysvshm.so` (if present)
+    - `ANDROID_SYSVSHM_SERVER` and `ANDROID_ALSA_SERVER` as absolute rootfs paths
+  - FEX bridge:
+    - `HODLL=libwow64fex.dll`
+  - `WINEDEBUG` defaulting for arm64ec (always-on unless user overrides):
+    - if `WINEDEBUG` is missing or `-all`, we set `WINEDEBUG=+loaddll,+err,+warn,+process`
+  - Note: we currently do **not** rely on `WINEDLLPATH` being correct; we instead ensure the prefix contains the
+    required PE builtins in `system32` and `syswow64` (see “Fix In Progress” below).
+
+### 3) Wine stdout/stderr capture to disk
+
+Because `logcat` alone didn’t contain enough context, we added a “write Wine output to a file” mechanism for the arm64ec path:
+
+- `app/src/main/java/com/winlator/xenvironment/components/GuestProgramLauncherComponent.java`
+  - When launching arm64ec guest, a debug callback is attached to `ProcessHelper` and writes lines to:
+    - `/storage/emulated/0/Download/Winlator/wine.log`
+
+Note:
+- This uses `ProcessHelper.addDebugCallback(...)`, which reads stdout+stderr only when callbacks exist.
+- This is intended for debugging and may need to be gated behind a setting later.
+
+### 4) Container pattern fix: add winhandler.exe and wfm.exe
+
+The default start command in `XServerDisplayActivity` is:
+- `winhandler.exe "wfm.exe"`
+
+We discovered our `container_pattern.tzst` did **not** include those files, leading to “Starting up...” spinner hangs and/or immediate failure.
+
+We imported them from the bionic-derived third_party container pattern:
+- Source:
+  - `third_party/Winlator-Ludashi/app/src/main/assets/container_pattern_common.tzst`
+  - Paths inside that archive:
+    - `home/xuser/.wine/drive_c/windows/wfm.exe`
+    - `home/xuser/.wine/drive_c/windows/winhandler.exe`
+- Applied into:
+  - `app/src/main/assets/container_pattern.tzst`
+
+Verification on device:
+- `.../home/xuser/.wine/drive_c/windows/winhandler.exe` exists and is `PE32+ x86-64`
+- `.../home/xuser/.wine/drive_c/windows/wfm.exe` exists and is `PE32+ x86-64`
+
+Note:
+- bionic/Ludashi applies these via a “common pattern” patch extracted into rootfs (affecting the active container through the `/home/xuser` symlink).
+- We aligned `app/src/main/assets/container_pattern_common.tzst` with bionic/Ludashi so common prefix files (including `winhandler.exe`/`wfm.exe`) are applied the same way.
+
+### 5) ImageFS/Wine path layout adjustments (relative vs absolute)
+
+We touched ImageFS logic while aligning to the bionic layout:
+- `app/src/main/java/com/winlator/xenvironment/ImageFs.java`
+- `app/src/main/java/com/winlator/xenvironment/ImageFsInstaller.java`
+
+Key goal:
+- Ensure Wine path resolves to `<rootfs>/opt/wine-10.0-arm64ec` and doesn’t accidentally double-prefix or produce a relative path.
+
+## What We Observed (Ground Truth Logs)
+
+From `adb logcat` (trimmed):
+- Guest is launched as:
+  - `<rootfs>/opt/wine-10.0-arm64ec/bin/wine explorer /desktop=shell,1280x720 winhandler.exe "wfm.exe"`
+- Environment contains:
+  - `HODLL=libwow64fex.dll`
+  - `WINEDLLPATH=<rootfs>/opt/wine-10.0-arm64ec/lib/wine/aarch64-windows:...`
+
+From `wine.log`:
+- There are successful module loads early:
+  - `Loaded ... kernelbase.dll ... builtin`
+  - `Loaded ... kernel32.dll ... builtin`
+  - `Loaded ... ws2_32.dll ... builtin`
+- Then later in the same run:
+  - `wine: could not load kernel32.dll, status c0000135`
+
+From filesystem checks:
+- `<wine>/lib/wine/aarch64-windows/kernel32.dll` exists and is `PE32+ Aarch64`.
+
+## Working Hypotheses (Prioritized)
+
+1. **Second-stage Wine process is 32-bit / mismatched architecture**:
+   - The log shows `start.exe` is loaded shortly before the final kernel32 failure.
+   - If the second-stage process is 32-bit (i386) but the required i386 `kernel32.dll` (or loader path) is missing/mismatched, it would produce exactly this “kernel32 not loadable” error even if the aarch64 version exists.
+   - Action: verify i386 wine dll set and how the arm64ec build expects to locate it.
+
+2. **WinHandler handshake failure triggers a fallback codepath**:
+   - `winhandler.exe` is x86_64 and requires WOW64 translation.
+   - If WinHandler cannot start or cannot communicate (UDP ports 7946/7947), the session may restart/exit.
+   - However, the terminal error reported is kernel32 load failure, which looks lower-level than an app-level handshake issue.
+
+3. **WINEPREFIX mismatch / wrong prefix content**:
+   - There is evidence of `home/xuser-1/.wine` on disk, while env points to `/home/xuser/.wine`.
+   - `home/xuser` is a symlink to `home/xuser-1`, so this should be fine, but prefix initialization might still be inconsistent.
+
+## Next Debug Actions (Concrete)
+
+1. Confirm whether the failing stage is attempting to execute i386 binaries:
+   - Add `+process` and inspect whether a child process is spawned that is i386/WoW64.
+2. Dump `file` type of key executables and confirm expected architecture:
+   - `wineboot.exe`, `services.exe`, `start.exe`, `winhandler.exe`, `wfm.exe`
+3. Validate presence and layout of i386 wine DLL directory:
+   - `<wine>/lib/wine/i386-windows/`
+   - Ensure it contains core DLLs needed for the stage that fails.
+
+## Fix In Progress
+
+We added a startup-time prefix repair step:
+- On every container launch, if `system32/kernel32.dll` or `syswow64/kernel32.dll` is missing in the active container,
+  we copy built-in PE DLLs/exes from the selected Wine installation into the prefix:
+  - arm64ec: `<wine>/lib/wine/aarch64-windows/*` -> `C:\\windows\\system32\\`
+  - all: `<wine>/lib/wine/i386-windows/*` -> `C:\\windows\\syswow64\\`
+- The copy logic matches Ludashi/bionic behavior (including `iexplore.exe` fallback + skipping `tabtip.exe`/`icu.dll`).
+
+Expected impact:
+- `winemenubuilder.exe` should no longer fail with “file not found”.
+- The final `kernel32.dll c0000135` failure should go away if it was due to missing prefix builtins.
+
+## Notes / Constraints
+
+- We can’t rely on ptrace/winedbg on Android (permissions).
+- `logcat` is insufficient; `wine.log` is now the primary signal.
+- `DELETE_FAILED_INTERNAL_ERROR` during install appears sporadic, but install succeeds afterward. Treat as noise unless it correlates with missing files.

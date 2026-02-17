@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1504" height="512" viewBox="0 0 1504 512" fill="none">
+  <defs>
+    <linearGradient id="bg_grad" x1="16" y1="16" x2="1488" y2="496" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0A1018"/>
+      <stop offset="1" stop-color="#101B2A"/>
+    </linearGradient>
+    <linearGradient id="steel_grad" x1="64" y1="64" x2="448" y2="448" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1D2B3D"/>
+      <stop offset="1" stop-color="#0D1826"/>
+    </linearGradient>
+    <linearGradient id="blue_grad" x1="112" y1="120" x2="400" y2="392" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4AA6FF"/>
+      <stop offset="1" stop-color="#2361CC"/>
+    </linearGradient>
+    <linearGradient id="line_grad" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#58A8FF" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#58A8FF" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#58A8FF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="16" y="16" width="1472" height="480" rx="42" fill="url(#bg_grad)"/>
+  <rect x="16" y="16" width="1472" height="480" rx="42" stroke="#2A3D57" stroke-width="4"/>
+
+  <rect x="64" y="64" width="384" height="384" rx="30" fill="url(#steel_grad)" stroke="#2A4F78" stroke-width="4"/>
+
+  <circle cx="94" cy="94" r="8" fill="#5A7FA8"/>
+  <circle cx="418" cy="94" r="8" fill="#5A7FA8"/>
+  <circle cx="94" cy="418" r="8" fill="#5A7FA8"/>
+  <circle cx="418" cy="418" r="8" fill="#5A7FA8"/>
+
+  <path d="M256 118 L366 182 L366 310 L256 374 L146 310 L146 182 Z" fill="#0B1725" stroke="#2E5B90" stroke-width="6"/>
+  <path d="M256 142 L344 193 L344 299 L256 350 L168 299 L168 193 Z" fill="url(#blue_grad)" opacity="0.95"/>
+
+  <path d="M178 304 L212 304 L236 232 L256 294 L276 232 L300 304 L334 304 L292 182 L256 260 L220 182 Z" fill="#EAF4FF"/>
+
+  <rect x="548" y="148" width="900" height="2" fill="url(#line_grad)"/>
+  <rect x="548" y="362" width="900" height="2" fill="url(#line_grad)"/>
+
+  <text x="548" y="242" fill="#E9F3FF" font-family="Rajdhani, Orbitron, Eurostile, Arial Black, sans-serif" font-size="124" font-weight="700" letter-spacing="8">
+    WINLATOR
+  </text>
+  <text x="548" y="360" fill="#4AA6FF" font-family="Rajdhani, Orbitron, Eurostile, Arial Black, sans-serif" font-size="94" font-weight="700" letter-spacing="12">
+    LLM
+  </text>
+
+  <rect x="521" y="102" width="2" height="308" fill="#2F4A68"/>
+  <rect x="1468" y="102" width="2" height="308" fill="#2F4A68"/>
+</svg>
