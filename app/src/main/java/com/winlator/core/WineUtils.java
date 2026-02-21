@@ -348,6 +348,23 @@ public abstract class WineUtils {
                 }
                 registryEditor.setDwordValue("System\\CurrentControlSet\\Services\\"+name, "Start", value);
             }
+
+            // Battle.net installer expects the Secondary Logon service to exist in normal startup mode.
+            if (!onlyEssential) ensureSeclogonService(registryEditor);
         }
+    }
+
+    private static void ensureSeclogonService(WineRegistryEditor registryEditor) {
+        final String key = "System\\CurrentControlSet\\Services\\seclogon";
+        registryEditor.setCreateKeyIfNotExist(true);
+        registryEditor.setStringValue(key, "Description", "Secondary Logon");
+        registryEditor.setStringValue(key, "DisplayName", "Secondary Logon");
+        registryEditor.setDwordValue(key, "ErrorControl", 1);
+        registryEditor.setStringValue(key, "ImagePath", "C:\\windows\\system32\\svchost.exe -k netsvcs");
+        registryEditor.setStringValue(key, "ObjectName", "LocalSystem");
+        registryEditor.setDwordValue(key, "PreshutdownTimeout", 0x0002bf20);
+        registryEditor.setDwordValue(key, "Start", 3);
+        registryEditor.setDwordValue(key, "Type", 0x20);
+        registryEditor.setStringValue(key+"\\Parameters", "ServiceDll", "C:\\windows\\system32\\seclogon.dll");
     }
 }
