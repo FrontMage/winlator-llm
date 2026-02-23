@@ -25,6 +25,12 @@ scripts/build-apk-install.sh -f
 
 - `app/build/outputs/apk/debug/app-debug.apk`
 
+## ARM 图形 DLL（aarch64）构建与注入
+
+用于 ARM64 游戏渲染链（DXVK/VKD3D）调试的独立流程文档：
+
+- `docs/BUILD_ARM_AARCH64_GRAPHICS_DLLS.md`
+
 ## Rootfs 工具补丁（重要）
 
 这次排查发现 `imagefs` 里有一批基础工具是指向 32-bit busybox 的符号链接（例如 `/usr/bin/env`、`/usr/bin/cat`、`/usr/bin/lscpu`）。在当前的启动链路下，这些工具会在 proot 中直接 `execve()`，从而触发：

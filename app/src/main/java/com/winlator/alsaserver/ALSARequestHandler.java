@@ -21,6 +21,7 @@ public class ALSARequestHandler implements RequestHandler {
         ALSAClient alsaClient = (ALSAClient) client.getTag();
         XInputStream inputStream = client.getInputStream();
         XOutputStream outputStream = client.getOutputStream();
+        if (alsaClient == null || inputStream == null || outputStream == null) return false;
 
         if (inputStream.available() < 5) return false;
         byte requestCode = inputStream.readByte();
@@ -89,4 +90,3 @@ public class ALSARequestHandler implements RequestHandler {
         }
     }
 }
-
