@@ -20,6 +20,10 @@ on:
 permissions:
   contents: read
 
+env:
+  UPSTREAM_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.upstream_ref || 'proton-9.0-x86_64-ci-test' }}
+  NDK_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.ndk_version || 'r27c' }}
+
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -79,13 +83,13 @@ jobs:
         uses: nttld/setup-ndk@v1
         id: ndk
         with:
-          ndk-version: ${{ inputs.ndk_version }}
+          ndk-version: ${{ env.NDK_VERSION }}
           add-to-path: false
           link-to-sdk: true
 
       - name: Clone upstream wine branch
         run: |
-          git clone --depth 1 --branch "${{ inputs.upstream_ref }}" https://github.com/TGP-17/wine.git upstream-wine
+          git clone --depth 1 --branch "${UPSTREAM_REF}" https://github.com/TGP-17/wine.git upstream-wine
           test -f upstream-wine/build.sh
           test -f upstream-wine/clang-wrapper.sh
           test -f upstream-wine/clang++-wrapper.sh
@@ -123,8 +127,8 @@ jobs:
           fi
 
           {
-            echo "upstream_ref=${{ inputs.upstream_ref }}"
-            echo "ndk=${{ inputs.ndk_version }}"
+            echo "upstream_ref=${UPSTREAM_REF}"
+            echo "ndk=${NDK_VERSION}"
             echo "unix_ntdll=${unix_ntdll}"
             echo "pe64_dll=${pe64_dll}"
             echo "pe32_dll=${pe32_dll}"
@@ -145,7 +149,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: wine-x86-android-${{ inputs.upstream_ref }}
+          name: wine-x86-android-${{ env.UPSTREAM_REF }}
           path: |
             /home/runner/wine-build.tar.xz
             abi-report.txt
