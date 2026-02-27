@@ -94,6 +94,13 @@ jobs:
           test -f upstream-wine/clang-wrapper.sh
           test -f upstream-wine/clang++-wrapper.sh
 
+      - name: Provide legacy workspace path expected by upstream scripts
+        run: |
+          sudo mkdir -p /home/runner/work/wine
+          sudo ln -sfn "${GITHUB_WORKSPACE}/upstream-wine" /home/runner/work/wine/wine
+          test -f /home/runner/work/wine/wine/build.sh
+          test -f /home/runner/work/wine/wine/clang-wrapper.sh
+
       - name: Configure and build
         run: |
           cd upstream-wine
