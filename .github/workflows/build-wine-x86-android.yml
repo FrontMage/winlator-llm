@@ -101,6 +101,16 @@ jobs:
           test -f /home/runner/work/wine/wine/build.sh
           test -f /home/runner/work/wine/wine/clang-wrapper.sh
 
+      - name: Build host wine tools for cross build
+        run: |
+          cd upstream-wine
+          mkdir -p wine-tools
+          cd wine-tools
+          ../configure --disable-tests
+          make -j"$(nproc)" tools
+          test -x ./tools/widl/widl
+          test -x ./tools/winebuild/winebuild
+
       - name: Configure and build
         run: |
           cd upstream-wine
