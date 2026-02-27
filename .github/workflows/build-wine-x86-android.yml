@@ -1,6 +1,11 @@
 name: Build Wine x86_64 Android (TGP)
 
 on:
+  push:
+    branches:
+      - wip/arm-graphics-wow-notes
+    paths:
+      - .github/workflows/build-wine-x86-android.yml
   workflow_dispatch:
     inputs:
       upstream_ref:
