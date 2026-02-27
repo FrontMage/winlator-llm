@@ -1,0 +1,146 @@
+name: Build Wine x86_64 Android (TGP)
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: "TGP-17/wine branch or ref"
+        required: true
+        default: "proton-9.0-x86_64-ci-test"
+      ndk_version:
+        description: "Android NDK version"
+        required: true
+        default: "r27c"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout current repo
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt update
+          sudo apt install -y \
+            build-essential gcc-multilib \
+            debhelper-compat=13 gcc-mingw-w64 libz-mingw-w64-dev \
+            lzma flex bison quilt unzip gettext icoutils sharutils pkg-config dctrl-tools \
+            imagemagick librsvg2-bin fontforge-nox khronos-api unicode-data unicode-idna \
+            libgl-dev libxi-dev libxt-dev libxmu-dev libx11-dev libxinerama-dev libxcursor-dev \
+            libxext-dev libxfixes-dev libxrandr-dev libxrender-dev libxkbfile-dev libxxf86vm-dev \
+            libxxf86dga-dev libglu1-mesa-dev libxcomposite-dev libxkbregistry-dev libxml-libxml-perl \
+            libssl-dev libv4l-dev libsdl2-dev libkrb5-dev libudev-dev libpulse-dev libldap2-dev \
+            unixodbc-dev libcups2-dev libcapi20-dev libvulkan-dev libopenal-dev libdbus-1-dev \
+            freeglut3-dev libunwind-dev libpcap0.8-dev libasound2-dev libgphoto2-dev libosmesa6-dev \
+            libncurses-dev libwayland-dev libfreetype-dev libgnutls28-dev libpcsclite-dev \
+            libusb-1.0-0-dev libgettextpo-dev libfontconfig-dev ocl-icd-opencl-dev \
+            libgstreamer-plugins-base1.0-dev libdrm2 libdrm-dev \
+            libvulkan-dev:i386 libdrm2:i386 libdrm-dev:i386 \
+            libx11-dev:i386 libfreetype6-dev:i386 libxcursor-dev:i386 libxi-dev:i386 \
+            libxshmfence-dev:i386 libxxf86vm-dev:i386 libxrandr-dev:i386 libxinerama-dev:i386 \
+            libxcomposite-dev:i386 libglu1-mesa-dev:i386 libosmesa6-dev:i386 libdbus-1-dev:i386 \
+            libncurses5-dev:i386 libsane-dev:i386 libv4l-dev:i386 libgphoto2-dev:i386 \
+            liblcms2-dev:i386 libcapi20-dev:i386 libcups2-dev:i386 libfontconfig1-dev:i386 \
+            libgsm1-dev:i386 libtiff5-dev:i386 libmpg123-dev:i386 libopenal-dev:i386 \
+            libldap2-dev:i386 libjpeg-dev:i386
+
+      - name: Prepare Termux deps prefix
+        run: |
+          mkdir -p /tmp/termuxfs
+          cd /tmp/termuxfs
+          wget -O termuxfs.tar https://github.com/TGP-17/termux-on-gha/releases/download/test/termuxfs.tar
+          tar xf termuxfs.tar
+          sudo mv data /
+          sudo chown -R "$(whoami)":"$(whoami)" /data
+          test -d /data/data/com.termux/files/usr
+
+      - name: Install llvm-mingw toolchain
+        run: |
+          cd /tmp
+          wget -O llvm-mingw.tar.xz https://github.com/bylaws/llvm-mingw/releases/download/20250305/llvm-mingw-20250305-ucrt-ubuntu-20.04-x86_64.tar.xz
+          tar -xf llvm-mingw.tar.xz
+          sudo mv llvm-mingw-20250305-ucrt-ubuntu-20.04-x86_64 /opt/llvm-mingw
+          sudo chown -R "$(whoami)":"$(whoami)" /opt/llvm-mingw
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup NDK
+        uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: ${{ inputs.ndk_version }}
+          add-to-path: false
+          link-to-sdk: true
+
+      - name: Clone upstream wine branch
+        run: |
+          git clone --depth 1 --branch "${{ inputs.upstream_ref }}" https://github.com/TGP-17/wine.git upstream-wine
+          test -f upstream-wine/build.sh
+          test -f upstream-wine/clang-wrapper.sh
+          test -f upstream-wine/clang++-wrapper.sh
+
+      - name: Configure and build
+        run: |
+          cd upstream-wine
+          chmod +x build.sh clang-wrapper.sh clang++-wrapper.sh
+          mkdir -p build
+          cp build.sh build/build.sh
+          cd build
+          DEPS=/data/data/com.termux/files/usr ARCH="x86_64" WINARCH="x86_64,i386" ./build.sh --configure
+          DEPS=/data/data/com.termux/files/usr ARCH="x86_64" WINARCH="x86_64,i386" ./build.sh --build
+          DEPS=/data/data/com.termux/files/usr ARCH="x86_64" WINARCH="x86_64,i386" ./build.sh --compress
+          test -f "$HOME/wine-build.tar.xz"
+
+      - name: Generate ABI report
+        run: |
+          set -euo pipefail
+          mkdir -p abi-root
+          tar -xJf "$HOME/wine-build.tar.xz" -C abi-root
+          report="abi-report.txt"
+          : > "$report"
+
+          unix_ntdll="$(find abi-root -type f -path '*/lib/wine/x86_64-unix/ntdll.so' | head -n1)"
+          pe64_dll="$(find abi-root -type f -path '*/lib/wine/x86_64-windows/*.dll' | head -n1)"
+          pe32_dll="$(find abi-root -type f -path '*/lib/wine/i386-windows/*.dll' | head -n1)"
+
+          if [[ -z "${unix_ntdll}" || -z "${pe64_dll}" || -z "${pe32_dll}" ]]; then
+            echo "Missing expected ABI files" | tee -a "$report"
+            echo "unix_ntdll=${unix_ntdll}" | tee -a "$report"
+            echo "pe64_dll=${pe64_dll}" | tee -a "$report"
+            echo "pe32_dll=${pe32_dll}" | tee -a "$report"
+            exit 1
+          fi
+
+          {
+            echo "upstream_ref=${{ inputs.upstream_ref }}"
+            echo "ndk=${{ inputs.ndk_version }}"
+            echo "unix_ntdll=${unix_ntdll}"
+            echo "pe64_dll=${pe64_dll}"
+            echo "pe32_dll=${pe32_dll}"
+            echo
+            echo "[file]"
+            file "${unix_ntdll}"
+            file "${pe64_dll}"
+            file "${pe32_dll}"
+            echo
+            echo "[readelf]"
+            readelf -h "${unix_ntdll}" | grep -E "Class:|Machine:"
+          } | tee -a "$report"
+
+          file "${unix_ntdll}" | grep -Eq "ELF 64-bit.*x86-64"
+          file "${pe64_dll}" | grep -Eq "PE32\\+ executable.*x86-64"
+          file "${pe32_dll}" | grep -Eq "PE32 executable.*Intel 80386"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wine-x86-android-${{ inputs.upstream_ref }}
+          path: |
+            /home/runner/wine-build.tar.xz
+            abi-report.txt
