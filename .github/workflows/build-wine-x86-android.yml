@@ -101,18 +101,15 @@ jobs:
           test -f /home/runner/work/wine/wine/build.sh
           test -f /home/runner/work/wine/wine/clang-wrapper.sh
 
-      - name: Build host wine tools for cross build
+      - name: Fetch prebuilt wine tools (upstream-compatible)
         run: |
-          set -euxo pipefail
           cd upstream-wine
-          mkdir -p wine-tools
-          cd wine-tools
-          ../configure --disable-tests
-          make -j"$(nproc)" tools/widl/widl tools/winebuild/winebuild || make -j"$(nproc)"
-
-          test -f ./tools/widl/widl
-          test -f ./tools/winebuild/winebuild
-          chmod +x ./tools/widl/widl ./tools/winebuild/winebuild
+          mkdir -p tmp wine-tools
+          cd tmp
+          wget -O tools.zip https://github.com/TGP-17/wine/releases/download/wine-tools/tools.zip
+          unzip -o tools.zip
+          mv tools ../wine-tools/tools
+          cd ../wine-tools
           test -x ./tools/widl/widl
           test -x ./tools/winebuild/winebuild
 
