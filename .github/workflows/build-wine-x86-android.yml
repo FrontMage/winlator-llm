@@ -133,9 +133,9 @@ jobs:
           report="abi-report.txt"
           : > "$report"
 
-          unix_ntdll="$(find abi-root -type f -path '*/lib/wine/x86_64-unix/ntdll.so' | head -n1)"
-          pe64_dll="$(find abi-root -type f -path '*/lib/wine/x86_64-windows/*.dll' | head -n1)"
-          pe32_dll="$(find abi-root -type f -path '*/lib/wine/i386-windows/*.dll' | head -n1)"
+          unix_ntdll="$(find abi-root -type f -path '*/lib/wine/x86_64-unix/ntdll.so' -print -quit)"
+          pe64_dll="$(find abi-root -type f -path '*/lib/wine/x86_64-windows/*.dll' -print -quit)"
+          pe32_dll="$(find abi-root -type f -path '*/lib/wine/i386-windows/*.dll' -print -quit)"
 
           if [[ -z "${unix_ntdll}" || -z "${pe64_dll}" || -z "${pe32_dll}" ]]; then
             echo "Missing expected ABI files" | tee -a "$report"
