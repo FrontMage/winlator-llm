@@ -109,10 +109,21 @@ jobs:
           ../configure --disable-tests
           make -j"$(nproc)" tools/widl tools/winebuild || make -j"$(nproc)"
 
-          host_widl="$(find . -type f -name widl -perm -111 | head -n1)"
-          host_winebuild="$(find . -type f -name winebuild -perm -111 | head -n1)"
+          host_widl="./tools/widl/widl"
+          if [ ! -f "${host_widl}" ]; then
+            host_widl="$(find . -type f -name widl | head -n1)"
+          fi
+
+          host_winebuild="./tools/winebuild/winebuild"
+          if [ ! -f "${host_winebuild}" ]; then
+            host_winebuild="$(find . -type f -name winebuild | head -n1)"
+          fi
+
           test -n "${host_widl}"
           test -n "${host_winebuild}"
+          test -f "${host_widl}"
+          test -f "${host_winebuild}"
+          chmod +x "${host_widl}" "${host_winebuild}"
 
           mkdir -p ./tools/widl ./tools/winebuild
           if [ ! -f ./tools/widl/widl ] || ! cmp -s "${host_widl}" ./tools/widl/widl; then
