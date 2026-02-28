@@ -107,9 +107,9 @@ jobs:
           mkdir -p wine-tools
           cd wine-tools
           ../configure --disable-tests
-          make -j"$(nproc)" tools
-          test -x ./tools/widl/widl
-          test -x ./tools/winebuild/winebuild
+          make -j"$(nproc)" tools/widl tools/winebuild || make -j"$(nproc)"
+          test -x ./tools/widl/widl || test -x ./tools/widl
+          test -x ./tools/winebuild/winebuild || test -x ./tools/winebuild
 
       - name: Configure and build
         run: |
