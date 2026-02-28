@@ -115,8 +115,12 @@ jobs:
           test -n "${host_winebuild}"
 
           mkdir -p ./tools/widl ./tools/winebuild
-          cp -f "${host_widl}" ./tools/widl/widl
-          cp -f "${host_winebuild}" ./tools/winebuild/winebuild
+          if [ ! -f ./tools/widl/widl ] || ! cmp -s "${host_widl}" ./tools/widl/widl; then
+            install -m 755 "${host_widl}" ./tools/widl/widl
+          fi
+          if [ ! -f ./tools/winebuild/winebuild ] || ! cmp -s "${host_winebuild}" ./tools/winebuild/winebuild; then
+            install -m 755 "${host_winebuild}" ./tools/winebuild/winebuild
+          fi
           test -x ./tools/widl/widl
           test -x ./tools/winebuild/winebuild
 
