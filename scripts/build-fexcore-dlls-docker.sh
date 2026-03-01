@@ -23,7 +23,7 @@ cd "${ROOT_DIR}"
 
 FEXCORE_VERSION="2508"
 UPDATE_ASSETS="0"
-DOCKER_IMAGE="ubuntu:latest"
+DOCKER_IMAGE="winlator-fexbuilder:22.04"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
