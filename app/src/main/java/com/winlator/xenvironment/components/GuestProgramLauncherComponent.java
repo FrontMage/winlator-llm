@@ -32,6 +32,7 @@ import java.util.Set;
 
 public class GuestProgramLauncherComponent extends EnvironmentComponent {
     private static final String TAG = "GuestLauncher";
+    private static final String DXVK_STDERR_TAG = "DXVK_STDERR";
     private String guestExecutable;
     private static int pid = -1;
     private String[] bindingPaths;
@@ -78,6 +79,15 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         }
 
         return out;
+    }
+
+    private static boolean shouldMirrorDxvkToLogcat(String line) {
+        if (line == null || line.isEmpty()) return false;
+        return line.contains("DXVK")
+                || line.contains("DXGI")
+                || line.contains("SWAPTRACE")
+                || line.contains("Presenter:")
+                || line.contains("Vulkan:");
     }
 
     @Override
@@ -344,6 +354,9 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
                     if (wineLogWriter[0] == null) return;
                     synchronized (wineLogWriter) {
                         try {
+                            if (shouldMirrorDxvkToLogcat(line)) {
+                                Log.i(DXVK_STDERR_TAG, line);
+                            }
                             wineLogWriter[0].write(line);
                             wineLogWriter[0].newLine();
                             pendingLines[0]++;
