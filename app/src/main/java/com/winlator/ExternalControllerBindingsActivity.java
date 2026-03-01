@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.MenuItem;
@@ -35,6 +36,7 @@ import com.winlator.inputcontrols.InputControlsManager;
 import com.winlator.math.Mathf;
 
 public class ExternalControllerBindingsActivity extends AppCompatActivity {
+    private static final String TAG_INPUT_PROBE = "InputProbe";
     private TextView emptyTextView;
     private ControlsProfile profile;
     private ExternalController controller;
@@ -137,7 +139,15 @@ public class ExternalControllerBindingsActivity extends AppCompatActivity {
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
         if (event.getDeviceId() == controller.getDeviceId() && event.getRepeatCount() == 0) {
-            if (event.getAction() == KeyEvent.ACTION_DOWN) updateControllerBinding(event.getKeyCode(), Binding.NONE);
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                Log.i(TAG_INPUT_PROBE,
+                        "[BindUI] capture keyCode=" + event.getKeyCode() +
+                                " keyName=" + KeyEvent.keyCodeToString(event.getKeyCode()) +
+                                " scanCode=" + event.getScanCode() +
+                                " source=0x" + Integer.toHexString(event.getSource()) +
+                                " deviceId=" + event.getDeviceId());
+                updateControllerBinding(event.getKeyCode(), Binding.NONE);
+            }
             return true;
         }
         else return super.dispatchKeyEvent(event);

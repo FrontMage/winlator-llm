@@ -3,6 +3,7 @@ package com.winlator.inputcontrols;
 import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
+import android.util.Log;
 
 import androidx.annotation.Nullable;
 
@@ -13,6 +14,7 @@ import org.json.JSONObject;
 import java.util.ArrayList;
 
 public class ExternalController {
+    private static final String TAG_INPUT_PROBE = "InputProbe";
     public static final byte IDX_BUTTON_A = 0;
     public static final byte IDX_BUTTON_B = 1;
     public static final byte IDX_BUTTON_X = 2;
@@ -155,6 +157,16 @@ public class ExternalController {
         boolean pressed = event.getAction() == KeyEvent.ACTION_DOWN;
         int keyCode = event.getKeyCode();
         int buttonIdx = getButtonIdxByKeyCode(keyCode);
+        if (shouldProbeKeyEvent(event)) {
+            Log.i(TAG_INPUT_PROBE,
+                    "[ExtCtrl] key action=" + event.getAction() +
+                            " keyCode=" + keyCode +
+                            " keyName=" + KeyEvent.keyCodeToString(keyCode) +
+                            " scanCode=" + event.getScanCode() +
+                            " source=0x" + Integer.toHexString(event.getSource()) +
+                            " deviceId=" + event.getDeviceId() +
+                            " mappedButtonIdx=" + buttonIdx);
+        }
         if (buttonIdx != -1) {
             state.setPressed(buttonIdx, pressed);
             return true;
@@ -264,6 +276,11 @@ public class ExternalController {
                 return IDX_BUTTON_L3;
             case KeyEvent.KEYCODE_BUTTON_THUMBR:
                 return IDX_BUTTON_R3;
+            // RP6 back keys: map to default clickable sticks for pass-through mode.
+            case KeyEvent.KEYCODE_BUTTON_C:
+                return IDX_BUTTON_L3;
+            case KeyEvent.KEYCODE_BUTTON_Z:
+                return IDX_BUTTON_R3;
             case KeyEvent.KEYCODE_BUTTON_L2:
                 return IDX_BUTTON_L2;
             case KeyEvent.KEYCODE_BUTTON_R2:
@@ -302,5 +319,19 @@ public class ExternalController {
             default:
                 return -1;
         }
+    }
+
+    private static boolean shouldProbeKeyEvent(KeyEvent event) {
+        if (event == null) return false;
+        int action = event.getAction();
+        if (action != KeyEvent.ACTION_DOWN && action != KeyEvent.ACTION_UP) return false;
+        int keyCode = event.getKeyCode();
+        return keyCode == KeyEvent.KEYCODE_UNKNOWN ||
+                (keyCode >= KeyEvent.KEYCODE_BUTTON_1 && keyCode <= KeyEvent.KEYCODE_BUTTON_16) ||
+                (keyCode >= KeyEvent.KEYCODE_BUTTON_A && keyCode <= KeyEvent.KEYCODE_BUTTON_MODE) ||
+                keyCode == KeyEvent.KEYCODE_DPAD_UP ||
+                keyCode == KeyEvent.KEYCODE_DPAD_RIGHT ||
+                keyCode == KeyEvent.KEYCODE_DPAD_DOWN ||
+                keyCode == KeyEvent.KEYCODE_DPAD_LEFT;
     }
 }

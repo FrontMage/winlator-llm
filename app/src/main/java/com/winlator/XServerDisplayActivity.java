@@ -1104,8 +1104,42 @@ import java.util.concurrent.Executors;
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
-        return (!inputControlsView.onKeyEvent(event) && !winHandler.onKeyEvent(event) && xServer.keyboard.onKeyEvent(event)) ||
-               (!ExternalController.isGameController(event.getDevice()) && super.dispatchKeyEvent(event));
+        boolean handledByInputControls = inputControlsView.onKeyEvent(event);
+        boolean handledByWinHandler = !handledByInputControls && winHandler.onKeyEvent(event);
+        boolean handledByKeyboard = !handledByInputControls && !handledByWinHandler && xServer.keyboard.onKeyEvent(event);
+        boolean handledByControllers = handledByInputControls || handledByWinHandler || handledByKeyboard;
+        boolean handledBySystem = !ExternalController.isGameController(event.getDevice()) && super.dispatchKeyEvent(event);
+        boolean handled = handledByControllers || handledBySystem;
+
+        if (shouldProbeControllerEvent(event)) {
+            Log.i(TAG_GUEST_DEBUG,
+                    "[InputProbe] dispatchKeyEvent action=" + event.getAction() +
+                            " keyCode=" + event.getKeyCode() +
+                            " keyName=" + KeyEvent.keyCodeToString(event.getKeyCode()) +
+                            " scanCode=" + event.getScanCode() +
+                            " deviceId=" + event.getDeviceId() +
+                            " source=0x" + Integer.toHexString(event.getSource()) +
+                            " byInputControls=" + handledByInputControls +
+                            " byWinHandler=" + handledByWinHandler +
+                            " byKeyboard=" + handledByKeyboard +
+                            " bySystem=" + handledBySystem +
+                            " handled=" + handled);
+        }
+
+        return handled;
+    }
+
+    private boolean shouldProbeControllerEvent(KeyEvent event) {
+        if (event == null) return false;
+        int action = event.getAction();
+        if (action != KeyEvent.ACTION_DOWN && action != KeyEvent.ACTION_UP) return false;
+        int keyCode = event.getKeyCode();
+        if (keyCode == KeyEvent.KEYCODE_UNKNOWN) return true;
+        if (keyCode >= KeyEvent.KEYCODE_BUTTON_1 && keyCode <= KeyEvent.KEYCODE_BUTTON_16) return true;
+        if (keyCode >= KeyEvent.KEYCODE_BUTTON_A && keyCode <= KeyEvent.KEYCODE_BUTTON_MODE) return true;
+        if (keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT ||
+                keyCode == KeyEvent.KEYCODE_DPAD_DOWN || keyCode == KeyEvent.KEYCODE_DPAD_LEFT) return true;
+        return ExternalController.isGameController(event.getDevice());
     }
 
     public InputControlsView getInputControlsView() {
