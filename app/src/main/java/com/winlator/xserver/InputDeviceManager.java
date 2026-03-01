@@ -1,5 +1,7 @@
 package com.winlator.xserver;
 
+import android.util.Log;
+
 import com.winlator.winhandler.MouseEventFlags;
 import com.winlator.winhandler.WinHandler;
 import com.winlator.xserver.events.ButtonPress;
@@ -15,6 +17,9 @@ import com.winlator.xserver.events.PointerWindowEvent;
 
 public class InputDeviceManager implements Pointer.OnPointerMotionListener, Keyboard.OnKeyboardListener, WindowManager.OnWindowModificationListener, XResourceManager.OnResourceLifecycleListener {
     private static final byte MOUSE_WHEEL_DELTA = 120;
+    private static final int IME_BRIDGE_KEYCODE_START = 120;
+    private static final int IME_BRIDGE_KEYCODE_END = 127;
+    private static final String IME_LOG_TAG = "ImeBridge";
     private Window pointWindow;
     private final XServer xServer;
 
@@ -199,8 +204,18 @@ public class InputDeviceManager implements Pointer.OnPointerMotionListener, Keyb
 
     @Override
     public void onKeyPress(byte keycode, int keysym) {
+        int keycodeInt = keycode & 0xFF;
+        boolean isImeBridgeKey = keycodeInt >= IME_BRIDGE_KEYCODE_START && keycodeInt <= IME_BRIDGE_KEYCODE_END;
+        if (isImeBridgeKey) {
+            Log.i(IME_LOG_TAG, String.format("[InputDevice] onKeyPress IME keycode=%d keysym=0x%08X", keycode & 0xFF, keysym));
+        }
         Window focusedWindow = xServer.windowManager.getFocusedWindow();
-        if (focusedWindow == null) return;
+        if (focusedWindow == null) {
+            if (isImeBridgeKey) {
+                Log.w(IME_LOG_TAG, "[InputDevice] onKeyPress dropped: focusedWindow=null");
+            }
+            return;
+        }
         updatePointWindow();
 
         Window eventWindow = null;
@@ -210,11 +225,21 @@ public class InputDeviceManager implements Pointer.OnPointerMotionListener, Keyb
             child = eventWindow.isAncestorOf(pointWindow) ? pointWindow : null;
         }
         if (eventWindow == null) {
-            if (!focusedWindow.hasEventListenerFor(Event.KEY_PRESS)) return;
+            if (!focusedWindow.hasEventListenerFor(Event.KEY_PRESS)) {
+                if (isImeBridgeKey) {
+                    Log.w(IME_LOG_TAG, String.format("[InputDevice] onKeyPress dropped: focusedWindow has no KEY_PRESS listener id=0x%08X", focusedWindow.id));
+                }
+                return;
+            }
             eventWindow = focusedWindow;
         }
 
-        if (!eventWindow.attributes.isEnabled()) return;
+        if (!eventWindow.attributes.isEnabled()) {
+            if (isImeBridgeKey) {
+                Log.w(IME_LOG_TAG, String.format("[InputDevice] onKeyPress dropped: eventWindow disabled id=0x%08X", eventWindow.id));
+            }
+            return;
+        }
 
         Bitmask keyButMask = getKeyButMask();
         short x = xServer.pointer.getX();
@@ -224,9 +249,15 @@ public class InputDeviceManager implements Pointer.OnPointerMotionListener, Keyb
         if (keysym != 0 && !xServer.keyboard.hasKeysym(keycode, keysym)) {
             xServer.keyboard.setKeysyms(keycode, keysym, keysym);
             eventWindow.sendEvent(new MappingNotify(MappingNotify.Request.KEYBOARD, keycode, 1));
+            if (isImeBridgeKey) {
+                Log.i(IME_LOG_TAG, String.format("[InputDevice] mapping updated for IME keysym=0x%08X window=0x%08X", keysym, eventWindow.id));
+            }
         }
 
         eventWindow.sendEvent(Event.KEY_PRESS, new KeyPress(keycode, xServer.windowManager.rootWindow, eventWindow, child, x, y, localPoint[0], localPoint[1], keyButMask));
+        if (isImeBridgeKey) {
+            Log.i(IME_LOG_TAG, String.format("[InputDevice] KEY_PRESS sent to window=0x%08X child=%s", eventWindow.id, child == null ? "null" : String.format("0x%08X", child.id)));
+        }
     }
 
     @Override

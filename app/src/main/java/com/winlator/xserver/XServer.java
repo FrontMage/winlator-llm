@@ -1,5 +1,6 @@
 package com.winlator.xserver;
 
+import android.util.Log;
 import android.util.SparseArray;
 
 import com.winlator.core.CursorLocker;
@@ -17,6 +18,10 @@ import java.util.EnumMap;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class XServer {
+    private static final byte IME_BRIDGE_KEYCODE_START = (byte)120;
+    private static final byte IME_BRIDGE_KEYCODE_END = (byte)127;
+    private static final String IME_LOG_TAG = "ImeBridge";
+    private byte imeBridgeNextKeycode = IME_BRIDGE_KEYCODE_START;
     public enum Lockable {WINDOW_MANAGER, PIXMAP_MANAGER, DRAWABLE_MANAGER, GRAPHIC_CONTEXT_MANAGER, INPUT_DEVICE, CURSOR_MANAGER, SHMSEGMENT_MANAGER}
     public static final short VERSION = 11;
     public static final String VENDOR_NAME = "Elbrus Technologies, LLC";
@@ -187,6 +192,21 @@ public class XServer {
     public void injectKeyRelease(XKeycode xKeycode) {
         try (XLock lock = lock(Lockable.WINDOW_MANAGER, Lockable.INPUT_DEVICE)) {
             keyboard.setKeyRelease(xKeycode.id);
+        }
+    }
+
+    public void injectUnicodeCodePoint(int codePoint) {
+        if (codePoint <= 0) return;
+        int keysym = codePoint <= 0xFF ? codePoint : (0x01000000 | codePoint);
+        byte keycode = imeBridgeNextKeycode;
+        imeBridgeNextKeycode = (byte)(imeBridgeNextKeycode + 1);
+        if ((imeBridgeNextKeycode & 0xFF) > (IME_BRIDGE_KEYCODE_END & 0xFF)) {
+            imeBridgeNextKeycode = IME_BRIDGE_KEYCODE_START;
+        }
+        Log.i(IME_LOG_TAG, String.format("[XServer] injectUnicode codePoint=U+%04X keysym=0x%08X keycode=%d", codePoint, keysym, keycode & 0xFF));
+        try (XLock lock = lock(Lockable.WINDOW_MANAGER, Lockable.INPUT_DEVICE)) {
+            keyboard.setKeyPress(keycode, keysym);
+            keyboard.setKeyRelease(keycode);
         }
     }
 

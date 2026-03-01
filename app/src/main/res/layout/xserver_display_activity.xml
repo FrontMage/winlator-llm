@@ -10,7 +10,21 @@
     <FrameLayout
         android:id="@+id/FLXServerDisplay"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="match_parent">
+
+        <com.winlator.widget.ImeBridgeEditText
+            android:id="@+id/XRTextInput"
+            android:layout_width="1dp"
+            android:layout_height="1dp"
+            android:layout_gravity="top|start"
+            android:clickable="false"
+            android:longClickable="false"
+            android:focusableInTouchMode="true"
+            android:inputType="text"
+            android:autofillHints="no"
+            tools:ignore="LabelFor"
+            android:visibility="gone" />
+    </FrameLayout>
 
     <com.google.android.material.navigation.NavigationView
         android:layout_width="wrap_content"
@@ -22,13 +36,4 @@
         app:itemIconTint="@color/colorAccent"
         app:menu="@menu/xserver_menu"/>
 
-    <EditText
-        android:id="@+id/XRTextInput"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:focusableInTouchMode="true"
-        android:inputType="text"
-        android:autofillHints="no"
-        tools:ignore="LabelFor"
-        android:visibility="gone" />
 </androidx.drawerlayout.widget.DrawerLayout>

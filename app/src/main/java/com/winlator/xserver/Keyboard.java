@@ -36,12 +36,14 @@ public class Keyboard {
 
     public void setKeysyms(byte keycode, int minKeysym, int majKeysym) {
         int index = keycode - 8;
+        if (index < 0 || index >= KEYS_COUNT / KEYSYMS_PER_KEYCODE) return;
         keysyms[index*KEYSYMS_PER_KEYCODE+0] = minKeysym;
         keysyms[index*KEYSYMS_PER_KEYCODE+1] = majKeysym;
     }
 
     public boolean hasKeysym(byte keycode, int keysym) {
         int index = keycode - 8;
+        if (index < 0 || index >= KEYS_COUNT / KEYSYMS_PER_KEYCODE) return false;
         return keysyms[index*KEYSYMS_PER_KEYCODE+0] == keysym || keysyms[index*KEYSYMS_PER_KEYCODE+1] == keysym;
     }
 

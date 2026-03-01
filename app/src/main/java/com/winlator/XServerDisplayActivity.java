@@ -10,6 +10,8 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.ArrayAdapter;
 import android.widget.CheckBox;
 import android.widget.FrameLayout;
@@ -55,6 +57,7 @@ import com.winlator.inputcontrols.InputControlsManager;
 import com.winlator.math.Mathf;
 import com.winlator.renderer.GLRenderer;
 import com.winlator.widget.FrameRating;
+import com.winlator.widget.ImeBridgeEditText;
 import com.winlator.widget.InputControlsView;
 import com.winlator.widget.MagnifierView;
 import com.winlator.widget.TouchpadView;
@@ -126,6 +129,7 @@ import java.util.concurrent.Executors;
     private SessionLogWriter sessionLogWriter;
     private boolean shutdownCompleted = false;
     private boolean restartRequested = false;
+    private ImeBridgeEditText imeBridgeView;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -346,7 +350,7 @@ import java.util.concurrent.Executors;
         final GLRenderer renderer = xServerView.getRenderer();
         switch (item.getItemId()) {
             case R.id.main_menu_keyboard:
-                AppUtils.showKeyboard(this);
+                showSoftKeyboard();
                 drawerLayout.closeDrawers();
                 break;
             case R.id.main_menu_input_controls:
@@ -796,6 +800,104 @@ import java.util.concurrent.Executors;
         }
 
         AppUtils.observeSoftKeyboardVisibility(drawerLayout, renderer::setScreenOffsetYRelativeToCursor);
+        setupImeBridge();
+    }
+
+    private void setupImeBridge() {
+        imeBridgeView = findViewById(R.id.XRTextInput);
+        if (imeBridgeView == null || this instanceof XrActivity) return;
+
+        imeBridgeView.setVisibility(View.VISIBLE);
+        imeBridgeView.setAlpha(0.0f);
+        imeBridgeView.setFocusable(false);
+        imeBridgeView.setFocusableInTouchMode(false);
+        imeBridgeView.setClickable(false);
+        imeBridgeView.setLongClickable(false);
+        imeBridgeView.setListener(new ImeBridgeEditText.Listener() {
+            @Override
+            public void onCommitText(CharSequence text) {
+                if (text == null || text.length() == 0 || xServer == null) return;
+                Log.i("ImeBridge", "[UI] onCommitText text=\"" + text + "\" len=" + text.length());
+                for (int i = 0; i < text.length(); ) {
+                    int codePoint = Character.codePointAt(text, i);
+                    i += Character.charCount(codePoint);
+                    Log.i("ImeBridge", String.format("[UI] commit codePoint=U+%04X", codePoint));
+
+                    if (codePoint == '\n' || codePoint == '\r') {
+                        xServer.injectKeyPress(com.winlator.xserver.XKeycode.KEY_ENTER);
+                        xServer.injectKeyRelease(com.winlator.xserver.XKeycode.KEY_ENTER);
+                        continue;
+                    }
+
+                    if (codePoint == '\t') {
+                        xServer.injectKeyPress(com.winlator.xserver.XKeycode.KEY_TAB);
+                        xServer.injectKeyRelease(com.winlator.xserver.XKeycode.KEY_TAB);
+                        continue;
+                    }
+
+                    if (!Character.isISOControl(codePoint)) {
+                        xServer.injectUnicodeCodePoint(codePoint);
+                    }
+                }
+            }
+
+            @Override
+            public void onDeleteSurroundingText(int beforeLength, int afterLength) {
+                if (xServer == null) return;
+                Log.i("ImeBridge", "[UI] onDeleteSurroundingText before=" + beforeLength + " after=" + afterLength);
+                int backspaceCount = Math.max(1, beforeLength);
+                for (int i = 0; i < backspaceCount; i++) {
+                    xServer.injectKeyPress(com.winlator.xserver.XKeycode.KEY_BKSP);
+                    xServer.injectKeyRelease(com.winlator.xserver.XKeycode.KEY_BKSP);
+                }
+                for (int i = 0; i < afterLength; i++) {
+                    xServer.injectKeyPress(com.winlator.xserver.XKeycode.KEY_DEL);
+                    xServer.injectKeyRelease(com.winlator.xserver.XKeycode.KEY_DEL);
+                }
+            }
+
+            @Override
+            public void onSendKeyEvent(KeyEvent event) {
+                if (event == null) return;
+                Log.i("ImeBridge", "[UI] onSendKeyEvent action=" + event.getAction() + " keyCode=" + event.getKeyCode());
+                // IME private key events (especially DEL during composition) must not be forwarded to X11.
+            }
+
+            @Override
+            public void onEditorAction(int actionCode) {
+                if (xServer == null) return;
+                if (actionCode == EditorInfo.IME_ACTION_DONE ||
+                        actionCode == EditorInfo.IME_ACTION_GO ||
+                        actionCode == EditorInfo.IME_ACTION_SEND ||
+                        actionCode == EditorInfo.IME_ACTION_NEXT ||
+                        actionCode == EditorInfo.IME_ACTION_SEARCH) {
+                    xServer.injectKeyPress(com.winlator.xserver.XKeycode.KEY_ENTER);
+                    xServer.injectKeyRelease(com.winlator.xserver.XKeycode.KEY_ENTER);
+                    imeBridgeView.clearFocus();
+                    imeBridgeView.setFocusable(false);
+                    imeBridgeView.setFocusableInTouchMode(false);
+                    InputMethodManager imm = (InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);
+                    if (imm != null && imeBridgeView.getWindowToken() != null) {
+                        imm.hideSoftInputFromWindow(imeBridgeView.getWindowToken(), 0);
+                    }
+                }
+            }
+        });
+    }
+
+    private void showSoftKeyboard() {
+        if (this instanceof XrActivity || imeBridgeView == null) {
+            AppUtils.showKeyboard(this);
+            return;
+        }
+
+        imeBridgeView.setFocusable(true);
+        imeBridgeView.setFocusableInTouchMode(true);
+        imeBridgeView.requestFocus();
+        InputMethodManager imm = (InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);
+        if (imm == null || !imm.showSoftInput(imeBridgeView, InputMethodManager.SHOW_IMPLICIT)) {
+            AppUtils.showKeyboard(this);
+        }
     }
 
     private void showInputControlsDialog() {
