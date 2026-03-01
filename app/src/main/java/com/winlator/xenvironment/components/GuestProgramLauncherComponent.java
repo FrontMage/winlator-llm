@@ -43,6 +43,10 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
     private static final Object lock = new Object();
     private boolean wow64Mode = true;
     private boolean arm64ecWine = false;
+    private File lastRootDir;
+    private String[] lastEnvp;
+    private String lastWineBinPath;
+    private boolean lastArm64ecWine = false;
 
     private static String ensureWineDebugChannels(String wineDebug, String... channels) {
         if (wineDebug == null) wineDebug = "";
@@ -103,9 +107,44 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
     public void stop() {
         synchronized (lock) {
             if (pid != -1) {
-                Process.killProcess(pid);
+                final int currentPid = pid;
+                if (lastArm64ecWine) requestWineserverShutdownLocked();
+                try {
+                    Process.killProcess(currentPid);
+                    Log.i(TAG, "Force-killed guest process pid=" + currentPid);
+                }
+                catch (Throwable t) {
+                    Log.w(TAG, "Failed to force-kill guest process pid=" + currentPid, t);
+                }
                 pid = -1;
             }
+            clearLastLaunchStateLocked();
+        }
+    }
+
+    private void clearLastLaunchStateLocked() {
+        lastRootDir = null;
+        lastEnvp = null;
+        lastWineBinPath = null;
+        lastArm64ecWine = false;
+    }
+
+    private String resolveWineserverPathLocked() {
+        if (lastWineBinPath == null || lastWineBinPath.isEmpty()) return null;
+        String wineserverPath = lastWineBinPath + "/wineserver";
+        if (new File(wineserverPath).isFile()) return wineserverPath;
+        String wineserver64Path = lastWineBinPath + "/wineserver64";
+        if (new File(wineserver64Path).isFile()) return wineserver64Path;
+        return null;
+    }
+
+    private void requestWineserverShutdownLocked() {
+        if (lastRootDir == null || lastEnvp == null) return;
+        String wineserverPath = resolveWineserverPathLocked();
+        if (wineserverPath == null) return;
+        int wsPid = ProcessHelper.exec(wineserverPath + " -k", lastEnvp, lastRootDir);
+        if (wsPid != -1) {
+            Log.i(TAG, "Requested wineserver shutdown with -k, pid=" + wsPid);
         }
     }
 
@@ -313,6 +352,10 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
             // Snapshot envp early. The activity clears its EnvVars instance after startup, but
             // we still need the original environment for follow-up keepalive processes.
             final String[] envp = envVars.toStringArray();
+            lastRootDir = rootDir;
+            lastEnvp = envp;
+            lastWineBinPath = wineBinPath;
+            lastArm64ecWine = true;
             File externalLogDir = new File("/storage/emulated/0/Download/Winlator");
             if (!externalLogDir.isDirectory()) externalLogDir.mkdirs();
             File wineLogFile = new File(externalLogDir, "wine.log");
@@ -496,8 +539,13 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         envVars.put("PROOT_TMP_DIR", tmpDir);
         envVars.put("PROOT_LOADER", nativeLibraryDir+"/libproot-loader.so");
         if (!wow64Mode) envVars.put("PROOT_LOADER_32", nativeLibraryDir+"/libproot-loader32.so");
+        String[] envp = envVars.toStringArray();
+        lastRootDir = rootDir;
+        lastEnvp = envp;
+        lastWineBinPath = wineBinPath;
+        lastArm64ecWine = false;
 
-        return ProcessHelper.exec(command, envVars.toStringArray(), rootDir, (status) -> {
+        return ProcessHelper.exec(command, envp, rootDir, (status) -> {
             synchronized (lock) {
                 pid = -1;
             }

@@ -67,13 +67,7 @@ public class XConnectorEpoll implements Runnable {
         if (!running || epollThread == null) return;
         running = false;
         requestShutdown();
-
-        while (epollThread.isAlive()) {
-            try {
-                epollThread.join();
-            }
-            catch (InterruptedException e) {}
-        }
+        epollThread.interrupt();
         epollThread = null;
     }
 

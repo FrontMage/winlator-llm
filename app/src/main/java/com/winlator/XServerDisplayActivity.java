@@ -124,6 +124,8 @@ import java.util.concurrent.Executors;
     private short taskAffinityMaskWoW64 = 0;
     private int frameRatingWindowId = -1;
     private SessionLogWriter sessionLogWriter;
+    private boolean shutdownCompleted = false;
+    private boolean restartRequested = false;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -325,9 +327,7 @@ import java.util.concurrent.Executors;
 
     @Override
     protected void onDestroy() {
-        stopSessionLogging();
-        winHandler.stop();
-        if (environment != null) environment.stopEnvironmentComponents();
+        shutdownRuntimeOnce();
         super.onDestroy();
     }
 
@@ -393,10 +393,32 @@ import java.util.concurrent.Executors;
     }
 
     private void exit() {
+        synchronized (this) {
+            if (restartRequested) return;
+            restartRequested = true;
+        }
+        shutdownRuntimeOnce();
+        AppUtils.restartApplication(this);
+    }
+
+    private void shutdownRuntimeOnce() {
+        synchronized (this) {
+            if (shutdownCompleted) return;
+            shutdownCompleted = true;
+        }
         stopSessionLogging();
+        stopGuestProgramFirst();
         winHandler.stop();
         if (environment != null) environment.stopEnvironmentComponents();
-        AppUtils.restartApplication(this);
+    }
+
+    private void stopGuestProgramFirst() {
+        if (environment == null) return;
+        GuestProgramLauncherComponent guestProgramLauncherComponent =
+                environment.getComponent(GuestProgramLauncherComponent.class);
+        if (guestProgramLauncherComponent != null) {
+            guestProgramLauncherComponent.stop();
+        }
     }
 
     private void stopSessionLogging() {

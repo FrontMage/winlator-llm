@@ -59,7 +59,9 @@ public class XEnvironment implements Iterable<EnvironmentComponent> {
     }
 
     public void stopEnvironmentComponents() {
-        for (EnvironmentComponent environmentComponent : this) environmentComponent.stop();
+        for (int i = components.size() - 1; i >= 0; i--) {
+            components.get(i).stop();
+        }
     }
 
     public void onPause() {
