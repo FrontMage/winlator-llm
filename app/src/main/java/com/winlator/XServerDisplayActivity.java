@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.Menu;
@@ -51,6 +52,7 @@ import com.winlator.core.WineRegistryEditor;
 import com.winlator.core.WineStartMenuCreator;
 import com.winlator.core.WineThemeManager;
 import com.winlator.core.WineUtils;
+import com.winlator.core.WineRequestHandler;
 import com.winlator.inputcontrols.ControlsProfile;
 import com.winlator.inputcontrols.ExternalController;
 import com.winlator.inputcontrols.InputControlsManager;
@@ -92,9 +94,11 @@ import java.util.concurrent.Executors;
     public class XServerDisplayActivity extends AppCompatActivity implements NavigationView.OnNavigationItemSelectedListener {
         private static final String TAG_GUEST_DEBUG = "GuestDebug";
     private static final int ROOTFS_UTILS_PATCH_VERSION = 4;
+    private static final String WINHANDLER_LITE_ASSET = "winhandler/winhandler-lite.exe";
+    private static final String WINHANDLER_LITE_GUEST_PATH = "C:\\windows\\winhandler-lite.exe";
     // Bump when changing assets extracted by applyGeneralPatches() (e.g. imagefs_patches.tzst contents)
     // so existing containers re-apply patches without requiring appVersion/imgVersion changes.
-    private static final int GENERAL_PATCH_VERSION = 4;
+    private static final int GENERAL_PATCH_VERSION = 6;
     private XServerView xServerView;
     private InputControlsView inputControlsView;
     private TouchpadView touchpadView;
@@ -130,6 +134,11 @@ import java.util.concurrent.Executors;
     private boolean shutdownCompleted = false;
     private boolean restartRequested = false;
     private ImeBridgeEditText imeBridgeView;
+    private final StringBuilder imePendingBuffer = new StringBuilder();
+    private boolean wowImeFocused = false;
+    private long suppressImeAutoShowUntilMs = 0L;
+    private WineRequestHandler wineRequestHandler;
+    private boolean winHandlerLiteLaunchQueued = false;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -413,6 +422,7 @@ import java.util.concurrent.Executors;
         stopSessionLogging();
         stopGuestProgramFirst();
         winHandler.stop();
+        if (wineRequestHandler != null) wineRequestHandler.stop();
         if (environment != null) environment.stopEnvironmentComponents();
     }
 
@@ -497,6 +507,7 @@ import java.util.concurrent.Executors;
             containerDataChanged = true;
         }
 
+        ensureWinHandlerLiteInstalled(imageFs.getRootDir());
         if (containerDataChanged) container.saveData();
     }
 
@@ -730,7 +741,28 @@ import java.util.concurrent.Executors;
 
         // Start the host-side WinHandler server before Wine launches winhandler.exe.
         // Otherwise winhandler.exe may exit early if it can't complete its init handshake.
+        winHandler.setOnImeFocusListener((focused, boxName) -> runOnUiThread(() -> {
+            if (focused) {
+                long now = SystemClock.uptimeMillis();
+                if (now < suppressImeAutoShowUntilMs) {
+                    Log.i("ImeBridge", "[UI] suppress auto-show focused=true box=" + boxName +
+                            " remainMs=" + (suppressImeAutoShowUntilMs - now));
+                    return;
+                }
+                wowImeFocused = true;
+                Log.i("ImeBridge", "[UI] wow ime focus gained box=" + boxName);
+                showSoftKeyboard();
+            } else {
+                if (!wowImeFocused) return;
+                wowImeFocused = false;
+                Log.i("ImeBridge", "[UI] wow ime focus lost box=" + boxName);
+                hideSoftKeyboard();
+            }
+        }));
         winHandler.start();
+        if (wineRequestHandler == null) wineRequestHandler = new WineRequestHandler(this);
+        wineRequestHandler.start();
+        queueWinHandlerLiteStart();
         environment.startEnvironmentComponents();
         envVars.clear();
         dxwrapperConfig = null;
@@ -818,41 +850,17 @@ import java.util.concurrent.Executors;
             public void onCommitText(CharSequence text) {
                 if (text == null || text.length() == 0 || xServer == null) return;
                 Log.i("ImeBridge", "[UI] onCommitText text=\"" + text + "\" len=" + text.length());
-                for (int i = 0; i < text.length(); ) {
-                    int codePoint = Character.codePointAt(text, i);
-                    i += Character.charCount(codePoint);
-                    Log.i("ImeBridge", String.format("[UI] commit codePoint=U+%04X", codePoint));
-
-                    if (codePoint == '\n' || codePoint == '\r') {
-                        xServer.injectKeyPress(com.winlator.xserver.XKeycode.KEY_ENTER);
-                        xServer.injectKeyRelease(com.winlator.xserver.XKeycode.KEY_ENTER);
-                        continue;
-                    }
-
-                    if (codePoint == '\t') {
-                        xServer.injectKeyPress(com.winlator.xserver.XKeycode.KEY_TAB);
-                        xServer.injectKeyRelease(com.winlator.xserver.XKeycode.KEY_TAB);
-                        continue;
-                    }
-
-                    if (!Character.isISOControl(codePoint)) {
-                        xServer.injectUnicodeCodePoint(codePoint);
-                    }
-                }
+                imePendingBuffer.append(text);
+                Log.i("ImeBridge", "[UI] buffered len=" + imePendingBuffer.length());
             }
 
             @Override
             public void onDeleteSurroundingText(int beforeLength, int afterLength) {
-                if (xServer == null) return;
                 Log.i("ImeBridge", "[UI] onDeleteSurroundingText before=" + beforeLength + " after=" + afterLength);
-                int backspaceCount = Math.max(1, beforeLength);
-                for (int i = 0; i < backspaceCount; i++) {
-                    xServer.injectKeyPress(com.winlator.xserver.XKeycode.KEY_BKSP);
-                    xServer.injectKeyRelease(com.winlator.xserver.XKeycode.KEY_BKSP);
-                }
-                for (int i = 0; i < afterLength; i++) {
-                    xServer.injectKeyPress(com.winlator.xserver.XKeycode.KEY_DEL);
-                    xServer.injectKeyRelease(com.winlator.xserver.XKeycode.KEY_DEL);
+                if (beforeLength > 0 && imePendingBuffer.length() > 0) {
+                    int toRemove = Math.min(beforeLength, imePendingBuffer.length());
+                    imePendingBuffer.delete(imePendingBuffer.length() - toRemove, imePendingBuffer.length());
+                    Log.i("ImeBridge", "[UI] buffer after delete len=" + imePendingBuffer.length());
                 }
             }
 
@@ -860,6 +868,12 @@ import java.util.concurrent.Executors;
             public void onSendKeyEvent(KeyEvent event) {
                 if (event == null) return;
                 Log.i("ImeBridge", "[UI] onSendKeyEvent action=" + event.getAction() + " keyCode=" + event.getKeyCode());
+                if (event.getAction() == KeyEvent.ACTION_DOWN &&
+                        event.getKeyCode() == KeyEvent.KEYCODE_DEL &&
+                        imePendingBuffer.length() > 0) {
+                    imePendingBuffer.deleteCharAt(imePendingBuffer.length() - 1);
+                    Log.i("ImeBridge", "[UI] buffer after key DEL len=" + imePendingBuffer.length());
+                }
                 // IME private key events (especially DEL during composition) must not be forwarded to X11.
             }
 
@@ -871,18 +885,36 @@ import java.util.concurrent.Executors;
                         actionCode == EditorInfo.IME_ACTION_SEND ||
                         actionCode == EditorInfo.IME_ACTION_NEXT ||
                         actionCode == EditorInfo.IME_ACTION_SEARCH) {
-                    xServer.injectKeyPress(com.winlator.xserver.XKeycode.KEY_ENTER);
-                    xServer.injectKeyRelease(com.winlator.xserver.XKeycode.KEY_ENTER);
-                    imeBridgeView.clearFocus();
-                    imeBridgeView.setFocusable(false);
-                    imeBridgeView.setFocusableInTouchMode(false);
-                    InputMethodManager imm = (InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);
-                    if (imm != null && imeBridgeView.getWindowToken() != null) {
-                        imm.hideSoftInputFromWindow(imeBridgeView.getWindowToken(), 0);
+                    flushImeBufferToXServer();
+                    if (imeBridgeView.getText() != null) {
+                        imeBridgeView.getText().clear();
                     }
+                    wowImeFocused = false;
+                    suppressImeAutoShowUntilMs = SystemClock.uptimeMillis() + 120L;
+                    hideSoftKeyboard();
                 }
             }
         });
+    }
+
+    private void flushImeBufferToXServer() {
+        if (xServer == null || imePendingBuffer.length() == 0) return;
+        final String text = imePendingBuffer.toString();
+        Log.i("ImeBridge", "[UI] flush buffered text=\"" + text + "\" len=" + text.length());
+
+        if (winHandler != null && winHandler.imeCommitText(text)) {
+            imePendingBuffer.setLength(0);
+            Log.i("ImeBridge", "[UI] submitted buffered text via winhandler-lite");
+            return;
+        }
+        Log.w("ImeBridge", "[UI] winhandler-lite unavailable, bridge submit skipped (buffer retained)");
+    }
+
+    private void queueWinHandlerLiteStart() {
+        if (winHandler == null || winHandlerLiteLaunchQueued) return;
+        winHandler.exec(WINHANDLER_LITE_GUEST_PATH);
+        winHandlerLiteLaunchQueued = true;
+        Log.i("ImeBridge", "[UI] queued winhandler-lite startup");
     }
 
     private void showSoftKeyboard() {
@@ -891,12 +923,27 @@ import java.util.concurrent.Executors;
             return;
         }
 
+        imePendingBuffer.setLength(0);
+        if (imeBridgeView.getText() != null) {
+            imeBridgeView.getText().clear();
+        }
         imeBridgeView.setFocusable(true);
         imeBridgeView.setFocusableInTouchMode(true);
         imeBridgeView.requestFocus();
         InputMethodManager imm = (InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);
         if (imm == null || !imm.showSoftInput(imeBridgeView, InputMethodManager.SHOW_IMPLICIT)) {
             AppUtils.showKeyboard(this);
+        }
+    }
+
+    private void hideSoftKeyboard() {
+        if (imeBridgeView == null) return;
+        imeBridgeView.clearFocus();
+        imeBridgeView.setFocusable(false);
+        imeBridgeView.setFocusableInTouchMode(false);
+        InputMethodManager imm = (InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);
+        if (imm != null && imeBridgeView.getWindowToken() != null) {
+            imm.hideSoftInputFromWindow(imeBridgeView.getWindowToken(), 0);
         }
     }
 
@@ -1526,6 +1573,7 @@ import java.util.concurrent.Executors;
         TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "container_pattern_common.tzst", rootDir, onExtractFileListener);
         // Vanilla: install native input helper (libfakeinput.so) into imagefs so it can be LD_PRELOAD'ed.
         ensureFakeInputInstalled(rootDir);
+        ensureWinHandlerLiteInstalled(rootDir);
         TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "pulseaudio.tzst", new File(getFilesDir(), "pulseaudio"));
         WineUtils.applySystemTweaks(this, wineInfo);
         container.putExtra("graphicsDriver", null);
@@ -1556,6 +1604,18 @@ import java.util.concurrent.Executors;
             if (!devInput.isDirectory()) devInput.mkdirs();
         }
         catch (Exception ignored) {}
+    }
+
+    private void ensureWinHandlerLiteInstalled(File rootDir) {
+        if (rootDir == null) return;
+        try {
+            File dst = new File(rootDir, ImageFs.WINEPREFIX + "/drive_c/windows/winhandler-lite.exe");
+            FileUtils.copy(this, WINHANDLER_LITE_ASSET, dst);
+            FileUtils.chmod(dst, 0771);
+        }
+        catch (Exception e) {
+            Log.w("ImeBridge", "Failed to install winhandler-lite", e);
+        }
     }
 
     private void applyRootfsUtilsPatches() {
