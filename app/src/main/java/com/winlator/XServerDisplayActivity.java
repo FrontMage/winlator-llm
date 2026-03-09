@@ -3,14 +3,19 @@ package com.winlator;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.util.Log;
+import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.ArrayAdapter;
@@ -134,8 +139,9 @@ import java.util.concurrent.Executors;
     private boolean shutdownCompleted = false;
     private boolean restartRequested = false;
     private ImeBridgeEditText imeBridgeView;
-    private final StringBuilder imePendingBuffer = new StringBuilder();
+    private FrameLayout imeBridgeHost;
     private boolean wowImeFocused = false;
+    private boolean suppressImeUntilFocusReset = false;
     private long suppressImeAutoShowUntilMs = 0L;
     private WineRequestHandler wineRequestHandler;
     private boolean winHandlerLiteLaunchQueued = false;
@@ -359,7 +365,8 @@ import java.util.concurrent.Executors;
         final GLRenderer renderer = xServerView.getRenderer();
         switch (item.getItemId()) {
             case R.id.main_menu_keyboard:
-                showSoftKeyboard();
+                suppressImeUntilFocusReset = false;
+                showSoftKeyboard("menu_keyboard");
                 drawerLayout.closeDrawers();
                 break;
             case R.id.main_menu_input_controls:
@@ -744,18 +751,26 @@ import java.util.concurrent.Executors;
         winHandler.setOnImeFocusListener((focused, boxName) -> runOnUiThread(() -> {
             if (focused) {
                 long now = SystemClock.uptimeMillis();
+                if (suppressImeUntilFocusReset) {
+                    if (now >= suppressImeAutoShowUntilMs) {
+                        suppressImeUntilFocusReset = false;
+                    }
+                    else {
+                    return;
+                    }
+                }
                 if (now < suppressImeAutoShowUntilMs) {
-                    Log.i("ImeBridge", "[UI] suppress auto-show focused=true box=" + boxName +
-                            " remainMs=" + (suppressImeAutoShowUntilMs - now));
+                    return;
+                }
+                if (wowImeFocused && imeBridgeView != null) {
                     return;
                 }
                 wowImeFocused = true;
-                Log.i("ImeBridge", "[UI] wow ime focus gained box=" + boxName);
-                showSoftKeyboard();
+                showSoftKeyboard("ime_focus_true:" + boxName);
             } else {
-                if (!wowImeFocused) return;
+                suppressImeUntilFocusReset = false;
                 wowImeFocused = false;
-                Log.i("ImeBridge", "[UI] wow ime focus lost box=" + boxName);
+                suppressImeAutoShowUntilMs = SystemClock.uptimeMillis() + 120L;
                 hideSoftKeyboard();
             }
         }));
@@ -787,6 +802,7 @@ import java.util.concurrent.Executors;
 
     private void setupUI() {
         FrameLayout rootView = findViewById(R.id.FLXServerDisplay);
+        imeBridgeHost = rootView;
         xServerView = new XServerView(this, xServer);
         final GLRenderer renderer = xServerView.getRenderer();
         renderer.setCursorVisible(false);
@@ -831,99 +847,140 @@ import java.util.concurrent.Executors;
             }
         }
 
-        AppUtils.observeSoftKeyboardVisibility(drawerLayout, renderer::setScreenOffsetYRelativeToCursor);
+        boolean imeOverlayKeyboard = preferences.getBoolean("ime_overlay_keyboard", false);
+        AppUtils.observeSoftKeyboardVisibility(drawerLayout, visible -> {
+            if (imeOverlayKeyboard) {
+                renderer.setScreenOffsetYRelativeToCursor(false);
+            }
+            else {
+                renderer.setScreenOffsetYRelativeToCursor(visible);
+            }
+
+            if (!visible) {
+                destroyImeBridgeView("keyboard_hidden", true);
+            }
+        });
         setupImeBridge();
     }
 
     private void setupImeBridge() {
-        imeBridgeView = findViewById(R.id.XRTextInput);
-        if (imeBridgeView == null || this instanceof XrActivity) return;
+        if (this instanceof XrActivity || imeBridgeHost == null) return;
+        ImeBridgeEditText existing = findViewById(R.id.XRTextInput);
+        if (existing != null) {
+            imeBridgeView = existing;
+            configureImeBridgeView(existing);
+        }
+    }
 
-        imeBridgeView.setVisibility(View.VISIBLE);
-        imeBridgeView.setAlpha(0.0f);
-        imeBridgeView.setFocusable(false);
-        imeBridgeView.setFocusableInTouchMode(false);
-        imeBridgeView.setClickable(false);
-        imeBridgeView.setLongClickable(false);
-        imeBridgeView.setListener(new ImeBridgeEditText.Listener() {
+    private void configureImeBridgeView(ImeBridgeEditText view) {
+        if (view == null) return;
+        view.setVisibility(View.VISIBLE);
+        view.setAlpha(0.0f);
+        view.setFocusable(false);
+        view.setFocusableInTouchMode(false);
+        view.setClickable(false);
+        view.setLongClickable(false);
+        view.setEnabled(true);
+        view.setListener(new ImeBridgeEditText.Listener() {
             @Override
             public void onCommitText(CharSequence text) {
                 if (text == null || text.length() == 0 || xServer == null) return;
-                Log.i("ImeBridge", "[UI] onCommitText text=\"" + text + "\" len=" + text.length());
-                imePendingBuffer.append(text);
-                Log.i("ImeBridge", "[UI] buffered len=" + imePendingBuffer.length());
+                forwardImeCommitToWoW(text);
             }
 
             @Override
             public void onDeleteSurroundingText(int beforeLength, int afterLength) {
-                Log.i("ImeBridge", "[UI] onDeleteSurroundingText before=" + beforeLength + " after=" + afterLength);
-                if (beforeLength > 0 && imePendingBuffer.length() > 0) {
-                    int toRemove = Math.min(beforeLength, imePendingBuffer.length());
-                    imePendingBuffer.delete(imePendingBuffer.length() - toRemove, imePendingBuffer.length());
-                    Log.i("ImeBridge", "[UI] buffer after delete len=" + imePendingBuffer.length());
-                }
             }
 
             @Override
             public void onSendKeyEvent(KeyEvent event) {
                 if (event == null) return;
-                Log.i("ImeBridge", "[UI] onSendKeyEvent action=" + event.getAction() + " keyCode=" + event.getKeyCode());
-                if (event.getAction() == KeyEvent.ACTION_DOWN &&
-                        event.getKeyCode() == KeyEvent.KEYCODE_DEL &&
-                        imePendingBuffer.length() > 0) {
-                    imePendingBuffer.deleteCharAt(imePendingBuffer.length() - 1);
-                    Log.i("ImeBridge", "[UI] buffer after key DEL len=" + imePendingBuffer.length());
-                }
                 // IME private key events (especially DEL during composition) must not be forwarded to X11.
             }
 
             @Override
             public void onEditorAction(int actionCode) {
                 if (xServer == null) return;
-                if (actionCode == EditorInfo.IME_ACTION_DONE ||
-                        actionCode == EditorInfo.IME_ACTION_GO ||
-                        actionCode == EditorInfo.IME_ACTION_SEND ||
-                        actionCode == EditorInfo.IME_ACTION_NEXT ||
-                        actionCode == EditorInfo.IME_ACTION_SEARCH) {
-                    flushImeBufferToXServer();
-                    if (imeBridgeView.getText() != null) {
-                        imeBridgeView.getText().clear();
-                    }
-                    wowImeFocused = false;
-                    suppressImeAutoShowUntilMs = SystemClock.uptimeMillis() + 120L;
-                    hideSoftKeyboard();
-                }
+                // No-op: keyboard hide should be driven by WoW focus loss (ime_focus=false),
+                // not by IME editor action / Enter.
             }
         });
     }
 
-    private void flushImeBufferToXServer() {
-        if (xServer == null || imePendingBuffer.length() == 0) return;
-        final String text = imePendingBuffer.toString();
-        Log.i("ImeBridge", "[UI] flush buffered text=\"" + text + "\" len=" + text.length());
+    private boolean ensureImeBridgeView() {
+        if (this instanceof XrActivity || imeBridgeHost == null) return false;
+        if (imeBridgeView != null) return true;
 
-        if (winHandler != null && winHandler.imeCommitText(text)) {
-            imePendingBuffer.setLength(0);
-            Log.i("ImeBridge", "[UI] submitted buffered text via winhandler-lite");
+        ImeBridgeEditText view = new ImeBridgeEditText(this);
+        view.setId(R.id.XRTextInput);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(1, 1);
+        lp.gravity = Gravity.TOP | Gravity.START;
+        view.setLayoutParams(lp);
+        imeBridgeHost.addView(view);
+        imeBridgeView = view;
+        configureImeBridgeView(view);
+        return true;
+    }
+
+    private void forwardImeCommitToWoW(CharSequence text) {
+        if (text == null || text.length() == 0 || xServer == null) return;
+        final String value = text.toString();
+
+        // Keep legacy behavior for non-WoW paths (notepad etc): send text as-is.
+        if (!wowImeFocused) {
+            sendImeTextToBridge(value, false);
             return;
         }
-        Log.w("ImeBridge", "[UI] winhandler-lite unavailable, bridge submit skipped (buffer retained)");
+
+        final int len = value.length();
+        int segmentStart = 0;
+
+        for (int i = 0; i < len; i++) {
+            char ch = value.charAt(i);
+            if (ch != '\n' && ch != '\r') continue;
+
+            if (i > segmentStart) {
+                sendImeTextToBridge(value.substring(segmentStart, i), false);
+            }
+            sendImeTextToBridge("", true);
+            segmentStart = i + 1;
+
+            if (ch == '\r' && segmentStart < len && value.charAt(segmentStart) == '\n') {
+                segmentStart++;
+                i++;
+            }
+        }
+
+        if (segmentStart < len) {
+            sendImeTextToBridge(value.substring(segmentStart), false);
+        }
+    }
+
+    private void sendImeTextToBridge(String text, boolean submit) {
+        String safeText = text == null ? "" : text;
+        if (safeText.isEmpty() && !submit) return;
+        if (winHandler != null && winHandler.imeCommitText(safeText, submit)) {
+            return;
+        }
     }
 
     private void queueWinHandlerLiteStart() {
         if (winHandler == null || winHandlerLiteLaunchQueued) return;
         winHandler.exec(WINHANDLER_LITE_GUEST_PATH);
         winHandlerLiteLaunchQueued = true;
-        Log.i("ImeBridge", "[UI] queued winhandler-lite startup");
     }
 
-    private void showSoftKeyboard() {
-        if (this instanceof XrActivity || imeBridgeView == null) {
+    private void showSoftKeyboard(String reason) {
+        if (this instanceof XrActivity) {
             AppUtils.showKeyboard(this);
             return;
         }
 
-        imePendingBuffer.setLength(0);
+        if (!ensureImeBridgeView()) {
+            AppUtils.showKeyboard(this);
+            return;
+        }
+
         if (imeBridgeView.getText() != null) {
             imeBridgeView.getText().clear();
         }
@@ -937,13 +994,68 @@ import java.util.concurrent.Executors;
     }
 
     private void hideSoftKeyboard() {
-        if (imeBridgeView == null) return;
-        imeBridgeView.clearFocus();
-        imeBridgeView.setFocusable(false);
-        imeBridgeView.setFocusableInTouchMode(false);
+        forceCloseImeSession("hide_soft_keyboard_pre", false);
+        destroyImeBridgeView("hide_soft_keyboard", false);
+    }
+
+    private void destroyImeBridgeView(String reason, boolean blockUntilFocusReset) {
+        ImeBridgeEditText view = imeBridgeView;
+        if (blockUntilFocusReset) {
+            suppressImeUntilFocusReset = true;
+            long now = SystemClock.uptimeMillis();
+            // Fallback: if WoW/Lua doesn't send ime_focus=false, don't block auto-show forever.
+            suppressImeAutoShowUntilMs = Math.max(suppressImeAutoShowUntilMs, now + 1200L);
+        }
+
+        forceCloseImeSession("destroy:" + reason, true);
+
+        if (view == null) {
+            return;
+        }
+
+        view.setListener(null);
+        view.clearFocus();
+        view.setEnabled(false);
+        view.setFocusable(false);
+        view.setFocusableInTouchMode(false);
+        view.setVisibility(View.GONE);
+
+        ViewGroup parent = (ViewGroup)view.getParent();
+        if (parent != null) parent.removeView(view);
+
+        imeBridgeView = null;
+        wowImeFocused = false;
+    }
+
+    private void forceCloseImeSession(String reason, boolean scheduleSecondPass) {
         InputMethodManager imm = (InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);
-        if (imm != null && imeBridgeView.getWindowToken() != null) {
-            imm.hideSoftInputFromWindow(imeBridgeView.getWindowToken(), 0);
+        View bridge = imeBridgeView;
+        if (imm != null) {
+            if (bridge != null && bridge.getWindowToken() != null) {
+                imm.hideSoftInputFromWindow(bridge.getWindowToken(), 0);
+            }
+            if (drawerLayout != null && drawerLayout.getWindowToken() != null) {
+                imm.hideSoftInputFromWindow(drawerLayout.getWindowToken(), 0);
+                imm.restartInput(drawerLayout);
+            }
+        }
+
+        if (drawerLayout != null) {
+            drawerLayout.setFocusableInTouchMode(true);
+            drawerLayout.requestFocus();
+        }
+        if (xServerView != null) {
+            xServerView.setFocusableInTouchMode(true);
+            xServerView.requestFocus();
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            WindowInsetsController controller = getWindow().getInsetsController();
+            if (controller != null) controller.hide(WindowInsets.Type.ime());
+        }
+
+        if (scheduleSecondPass && drawerLayout != null) {
+            drawerLayout.postDelayed(() -> forceCloseImeSession(reason + ":second_pass", false), 100L);
         }
     }
 
@@ -1258,37 +1370,7 @@ import java.util.concurrent.Executors;
         boolean handledByKeyboard = !handledByInputControls && !handledByWinHandler && xServer.keyboard.onKeyEvent(event);
         boolean handledByControllers = handledByInputControls || handledByWinHandler || handledByKeyboard;
         boolean handledBySystem = !ExternalController.isGameController(event.getDevice()) && super.dispatchKeyEvent(event);
-        boolean handled = handledByControllers || handledBySystem;
-
-        if (shouldProbeControllerEvent(event)) {
-            Log.i(TAG_GUEST_DEBUG,
-                    "[InputProbe] dispatchKeyEvent action=" + event.getAction() +
-                            " keyCode=" + event.getKeyCode() +
-                            " keyName=" + KeyEvent.keyCodeToString(event.getKeyCode()) +
-                            " scanCode=" + event.getScanCode() +
-                            " deviceId=" + event.getDeviceId() +
-                            " source=0x" + Integer.toHexString(event.getSource()) +
-                            " byInputControls=" + handledByInputControls +
-                            " byWinHandler=" + handledByWinHandler +
-                            " byKeyboard=" + handledByKeyboard +
-                            " bySystem=" + handledBySystem +
-                            " handled=" + handled);
-        }
-
-        return handled;
-    }
-
-    private boolean shouldProbeControllerEvent(KeyEvent event) {
-        if (event == null) return false;
-        int action = event.getAction();
-        if (action != KeyEvent.ACTION_DOWN && action != KeyEvent.ACTION_UP) return false;
-        int keyCode = event.getKeyCode();
-        if (keyCode == KeyEvent.KEYCODE_UNKNOWN) return true;
-        if (keyCode >= KeyEvent.KEYCODE_BUTTON_1 && keyCode <= KeyEvent.KEYCODE_BUTTON_16) return true;
-        if (keyCode >= KeyEvent.KEYCODE_BUTTON_A && keyCode <= KeyEvent.KEYCODE_BUTTON_MODE) return true;
-        if (keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT ||
-                keyCode == KeyEvent.KEYCODE_DPAD_DOWN || keyCode == KeyEvent.KEYCODE_DPAD_LEFT) return true;
-        return ExternalController.isGameController(event.getDevice());
+        return handledByControllers || handledBySystem;
     }
 
     public InputControlsView getInputControlsView() {

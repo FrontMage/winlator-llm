@@ -31,10 +31,9 @@ public class WinHandler {
     private static final short CLIENT_PORT = 7946;
     private static final short LITE_PORT = 7952;
     private static final byte LITE_READY = 0x70;
-    private static final byte LITE_LOG = 0x71;
-    private static final byte LITE_LOG_TEXT = 0x72;
     private static final byte LITE_FOCUS = 0x73;
     private static final byte LITE_REQUEST_TEXT = 0x01;
+    private static final int LITE_FLAG_SUBMIT = 0x00000001;
     private static final int LITE_MAX_UTF16_BYTES = 4096;
     private static final int RX_PACKET_MAX = 2048;
     public static final byte DINPUT_MAPPER_TYPE_STANDARD = 0;
@@ -82,8 +81,6 @@ public class WinHandler {
         final String filename = cmdList[0];
         final String parameters = cmdList.length > 1 ? cmdList[1] : "";
 
-        Log.i(TAG, "exec enqueue filename=" + filename + " params=" + parameters + " initReceived=" + initReceived);
-
         addAction(() -> {
             byte[] filenameBytes = filename.getBytes();
             byte[] parametersBytes = parameters.getBytes();
@@ -95,8 +92,7 @@ public class WinHandler {
             sendData.putInt(parametersBytes.length);
             sendData.put(filenameBytes);
             sendData.put(parametersBytes);
-            boolean ok = sendPacket(CLIENT_PORT);
-            Log.i(TAG, "exec send filename=" + filename + " ok=" + ok + " clientPort=" + CLIENT_PORT);
+            sendPacket(CLIENT_PORT);
         });
     }
 
@@ -177,18 +173,25 @@ public class WinHandler {
     }
 
     public boolean imeCommitText(String text) {
-        if (!initReceived || !liteReady || text == null || text.isEmpty()) return false;
+        return imeCommitText(text, false);
+    }
+
+    public boolean imeCommitText(String text, boolean submit) {
+        if (!initReceived || !liteReady) return false;
+        if (text == null) text = "";
+        if (text.isEmpty() && !submit) return false;
 
         byte[] utf16Bytes = text.getBytes(StandardCharsets.UTF_16LE);
-        if (utf16Bytes.length == 0) return false;
-
         final int textBytes = Math.min(utf16Bytes.length, LITE_MAX_UTF16_BYTES);
+        if (textBytes == 0 && !submit) return false;
         final int reqId = liteReqSeq.getAndIncrement();
-        final byte[] payload = new byte[1 + 4 + 4 + textBytes];
+        final byte[] payload = new byte[1 + 4 + 4 + 4 + textBytes];
+        final int flags = submit ? LITE_FLAG_SUBMIT : 0;
         ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
                 .put(LITE_REQUEST_TEXT)
                 .putInt(reqId)
                 .putInt(textBytes)
+                .putInt(flags)
                 .put(utf16Bytes, 0, textBytes);
 
         addAction(() -> {
@@ -201,7 +204,6 @@ public class WinHandler {
                 Log.w(TAG, "Failed to send IME payload to winhandler-lite", e);
             }
         });
-        Log.i(TAG, "winhandler-lite submit reqId=" + reqId + " chars=" + text.length());
         return true;
     }
 
@@ -276,13 +278,9 @@ public class WinHandler {
     }
 
     private void handleRequest(byte requestCode, final int port, final int packetLen) {
-        int req = requestCode & 0xff;
-        Log.i(TAG, "handleRequest code=" + req + " fromPort=" + port + " len=" + packetLen + " initReceived=" + initReceived);
         switch (requestCode) {
             case RequestCodes.INIT: {
                 initReceived = true;
-                Log.i(TAG, "INIT received fromPort=" + port + ", actions queued=" + actions.size());
-
                 synchronized (actions) {
                     actions.notify();
                 }
@@ -380,37 +378,6 @@ public class WinHandler {
             }
             case LITE_READY: {
                 liteReady = true;
-                Log.i(TAG, "winhandler-lite ready");
-                break;
-            }
-            case LITE_LOG: {
-                if (packetLen < 14) {
-                    Log.w(TAG, "winhandler-lite log packet too short len=" + packetLen);
-                    break;
-                }
-                int reqId = receiveData.getInt();
-                int stage = receiveData.get() & 0xff;
-                int winerr = receiveData.getInt();
-                int aux = receiveData.getInt();
-                Log.i(TAG, "winhandler-lite reqId=" + reqId + " stage=" + stageToString(stage)
-                        + " winerr=" + winerr + " aux=" + aux);
-                break;
-            }
-            case LITE_LOG_TEXT: {
-                if (packetLen < 8) {
-                    Log.w(TAG, "winhandler-lite text packet too short len=" + packetLen);
-                    break;
-                }
-                int reqId = receiveData.getInt();
-                int stage = receiveData.get() & 0xff;
-                int textLen = receiveData.getShort() & 0xffff;
-                int remain = Math.max(0, packetLen - 8);
-                int n = Math.min(textLen, remain);
-                byte[] bytes = new byte[n];
-                receiveData.get(bytes);
-                String text = new String(bytes, StandardCharsets.UTF_8);
-                Log.i(TAG, "winhandler-lite reqId=" + reqId + " stage=" + stageToString(stage)
-                        + " text=" + text);
                 break;
             }
             case LITE_FOCUS: {
@@ -425,65 +392,14 @@ public class WinHandler {
                 byte[] bytes = new byte[n];
                 receiveData.get(bytes);
                 String boxName = new String(bytes, StandardCharsets.UTF_8);
-                Log.i(TAG, "winhandler-lite focus focused=" + focused + " box=" + boxName);
                 if (onImeFocusListener != null) {
                     onImeFocusListener.onImeFocusChanged(focused, boxName);
                 }
                 break;
             }
             default: {
-                Log.i(TAG, "Unhandled request code=" + req + " fromPort=" + port);
                 break;
             }
-        }
-    }
-
-    private String stageToString(int stage) {
-        switch (stage) {
-            case 1: return "recv_text";
-            case 2: return "unicode_inject_begin";
-            case 3: return "unicode_inject_end";
-            case 4: return "done";
-            case 5: return "invalid_packet";
-            case 20: return "target_resolve";
-            case 21: return "msg_inject_begin";
-            case 22: return "msg_inject_end";
-            case 23: return "msg_inject_failed";
-            case 24: return "msg_inject_mode";
-            case 30: return "bridge_ping_begin";
-            case 31: return "bridge_ping_ok";
-            case 32: return "bridge_ping_fail";
-            case 33: return "bridge_submit_begin";
-            case 34: return "bridge_submit_ok";
-            case 35: return "bridge_submit_fail";
-            case 36: return "bridge_debug_flags";
-            case 37: return "bridge_debug_err_set";
-            case 38: return "bridge_debug_err_notify";
-            case 39: return "bridge_debug_comp_len";
-            case 40: return "bridge_ctx_hwnd_fg_focus";
-            case 41: return "bridge_ctx_hwnd_target_oldfocus";
-            case 42: return "bridge_ctx_tid_self_fg";
-            case 43: return "bridge_ctx_tid_pid_target";
-            case 44: return "bridge_ctx_attach_focus_ok";
-            case 45: return "bridge_ctx_attach_focus_err";
-            case 46: return "ctx_fg_hwnd";
-            case 47: return "ctx_focus_hwnd";
-            case 50: return "clip_open_begin";
-            case 51: return "clip_open_ok";
-            case 52: return "clip_open_fail";
-            case 53: return "clip_set_ok";
-            case 54: return "clip_set_fail";
-            case 55: return "paste_sendinput_begin";
-            case 56: return "paste_sendinput_ok";
-            case 57: return "paste_sendinput_fail";
-            case 58: return "clip_restore_ok";
-            case 59: return "clip_restore_fail";
-            case 60: return "target_parent";
-            case 61: return "wm_paste_begin";
-            case 62: return "wm_paste_ok";
-            case 63: return "wm_paste_fail";
-            case 64: return "clip_restore_delay";
-            default: return "unknown_" + stage;
         }
     }
 

@@ -92,6 +92,8 @@ public class SettingsFragment extends Fragment {
 
         final CheckBox cbUseDRI3 = view.findViewById(R.id.CBUseDRI3);
         cbUseDRI3.setChecked(preferences.getBoolean("use_dri3", true));
+        final CheckBox cbImeOverlayKeyboard = view.findViewById(R.id.CBImeOverlayKeyboard);
+        cbImeOverlayKeyboard.setChecked(preferences.getBoolean("ime_overlay_keyboard", false));
 
         final CheckBox cbEnableWineDebug = view.findViewById(R.id.CBEnableWineDebug);
         cbEnableWineDebug.setChecked(preferences.getBoolean("enable_wine_debug", false));
@@ -149,6 +151,7 @@ public class SettingsFragment extends Fragment {
         view.findViewById(R.id.BTConfirm).setOnClickListener((v) -> {
             SharedPreferences.Editor editor = preferences.edit();
             editor.putBoolean("use_dri3", cbUseDRI3.isChecked());
+            editor.putBoolean("ime_overlay_keyboard", cbImeOverlayKeyboard.isChecked());
             editor.putFloat("cursor_speed", sbCursorSpeed.getProgress() / 100.0f);
             editor.putBoolean("enable_wine_debug", cbEnableWineDebug.isChecked());
             editor.putBoolean("enable_alsa_debug", cbEnableAlsaDebug.isChecked());

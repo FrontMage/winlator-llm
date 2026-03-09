@@ -11,10 +11,9 @@
 #define HOST_PORT 7947
 
 #define PKT_LITE_READY 0x70
-#define PKT_LITE_LOG 0x71
-#define PKT_LITE_LOG_TEXT 0x72
 #define PKT_LITE_FOCUS 0x73
 #define PKT_REQ_TEXT 0x01
+#define PKT_TEXT_FLAG_SUBMIT 0x00000001
 
 #define BRIDGE_PORT 38442
 
@@ -57,25 +56,10 @@ static void send_ready(void) {
 }
 
 static void send_log(int32_t req_id, uint8_t stage, int32_t winerr, int32_t aux) {
-  // Fixed wire format, no struct packing/padding:
-  // [1B code][4B req_id LE][1B stage][4B winerr LE][4B aux LE]
-  uint8_t payload[14];
-  payload[0] = PKT_LITE_LOG;
-  payload[1] = (uint8_t)(req_id & 0xFF);
-  payload[2] = (uint8_t)((req_id >> 8) & 0xFF);
-  payload[3] = (uint8_t)((req_id >> 16) & 0xFF);
-  payload[4] = (uint8_t)((req_id >> 24) & 0xFF);
-  payload[5] = stage;
-  payload[6] = (uint8_t)(winerr & 0xFF);
-  payload[7] = (uint8_t)((winerr >> 8) & 0xFF);
-  payload[8] = (uint8_t)((winerr >> 16) & 0xFF);
-  payload[9] = (uint8_t)((winerr >> 24) & 0xFF);
-  payload[10] = (uint8_t)(aux & 0xFF);
-  payload[11] = (uint8_t)((aux >> 8) & 0xFF);
-  payload[12] = (uint8_t)((aux >> 16) & 0xFF);
-  payload[13] = (uint8_t)((aux >> 24) & 0xFF);
-  sendto(g_socket, (const char *)payload, sizeof(payload), 0,
-         (const struct sockaddr *)&g_host_addr, sizeof(g_host_addr));
+  (void)req_id;
+  (void)stage;
+  (void)winerr;
+  (void)aux;
 }
 
 static void send_focus_to_host(int focus, const char *box_name) {
@@ -170,46 +154,6 @@ static int b64_encode(const uint8_t *src, int src_len, char *dst, int dst_cap) {
   if (di >= dst_cap) return 0;
   dst[di] = '\0';
   return di;
-}
-
-static void send_log_text_utf8(int32_t req_id, uint8_t stage, const char *text) {
-  if (!text) return;
-  uint16_t n = (uint16_t)strnlen(text, 1023);
-  uint8_t payload[1 + 4 + 1 + 2 + 1023];
-  payload[0] = PKT_LITE_LOG_TEXT;
-  payload[1] = (uint8_t)(req_id & 0xFF);
-  payload[2] = (uint8_t)((req_id >> 8) & 0xFF);
-  payload[3] = (uint8_t)((req_id >> 16) & 0xFF);
-  payload[4] = (uint8_t)((req_id >> 24) & 0xFF);
-  payload[5] = stage;
-  payload[6] = (uint8_t)(n & 0xFF);
-  payload[7] = (uint8_t)((n >> 8) & 0xFF);
-  memcpy(payload + 8, text, n);
-  sendto(g_socket, (const char *)payload, 8 + n, 0,
-         (const struct sockaddr *)&g_host_addr, sizeof(g_host_addr));
-}
-
-static void send_log_hwnd_desc(int32_t req_id, uint8_t stage, HWND hwnd) {
-  char class_name[128] = {0};
-  WCHAR title_w[256] = {0};
-  char title_u8[512] = {0};
-  HWND parent = GetParent(hwnd);
-
-  if (hwnd) {
-    GetClassNameA(hwnd, class_name, (int)sizeof(class_name));
-    GetWindowTextW(hwnd, title_w, (int)(sizeof(title_w) / sizeof(title_w[0])));
-    WideCharToMultiByte(CP_UTF8, 0, title_w, -1, title_u8, (int)sizeof(title_u8), NULL, NULL);
-  }
-
-  char line[1024];
-  _snprintf(line, sizeof(line),
-            "hwnd=0x%08lx parent=0x%08lx class=\"%s\" title=\"%s\"",
-            (unsigned long)(uintptr_t)hwnd,
-            (unsigned long)(uintptr_t)parent,
-            class_name,
-            title_u8);
-  line[sizeof(line) - 1] = '\0';
-  send_log_text_utf8(req_id, stage, line);
 }
 
 static WCHAR *capture_clipboard_unicode_copy(int *out_wchars) {
@@ -417,8 +361,20 @@ static void handle_text_request(const char *packet, int packet_len) {
   const uint8_t req_type = (uint8_t)packet[0];
   const int32_t req_id = *(const int32_t *)(packet + 1);
   const int32_t text_bytes = *(const int32_t *)(packet + 5);
+  int32_t flags = 0;
+  int text_offset = 9;
 
-  if (req_type != PKT_REQ_TEXT || text_bytes <= 0 || text_bytes > 4096 || packet_len < 9 + text_bytes) {
+  if (packet_len >= 13 && packet_len >= 13 + text_bytes) {
+    flags = *(const int32_t *)(packet + 9);
+    text_offset = 13;
+  }
+
+  if (req_type != PKT_REQ_TEXT ||
+      text_bytes < 0 ||
+      text_bytes > 4096 ||
+      (text_bytes == 0 && !(flags & PKT_TEXT_FLAG_SUBMIT)) ||
+      (text_bytes & 1) != 0 ||
+      packet_len < text_offset + text_bytes) {
     send_log(req_id, STAGE_INVALID_PACKET, ERROR_INVALID_DATA, text_bytes);
     return;
   }
@@ -430,14 +386,17 @@ static void handle_text_request(const char *packet, int packet_len) {
   if (wchar_count > 2048) {
     wchar_count = 2048;
   }
-  memcpy(wide, packet + 9, wchar_count * sizeof(WCHAR));
+  if (wchar_count > 0) {
+    memcpy(wide, packet + text_offset, wchar_count * sizeof(WCHAR));
+  }
   wide[wchar_count] = L'\0';
 
   if (g_wow_ime_focus) {
+    int submit = (flags & PKT_TEXT_FLAG_SUBMIT) ? 1 : 0;
     send_log(req_id, STAGE_MSG_INJECT_BEGIN, 0, 901);
-    if (send_bridge_commit(req_id, wide, wchar_count, 1)) {
+    if (send_bridge_commit(req_id, wide, wchar_count, submit)) {
       send_log(req_id, STAGE_MSG_INJECT_END, 0, 901);
-      send_log(req_id, STAGE_MSG_INJECT_MODE, 901, wchar_count);
+      send_log(req_id, STAGE_MSG_INJECT_MODE, submit ? 903 : 902, wchar_count);
       send_log(req_id, STAGE_DONE, 0, 0);
     } else {
       send_log(req_id, STAGE_MSG_INJECT_FAILED, (int32_t)GetLastError(), 901);
@@ -455,7 +414,6 @@ static void handle_text_request(const char *packet, int packet_len) {
   }
 
   send_log(req_id, STAGE_TARGET_RESOLVE, 0, (int32_t)(uintptr_t)hwnd);
-  send_log_hwnd_desc(req_id, STAGE_TARGET_RESOLVE, hwnd);
   send_log(req_id, STAGE_TARGET_PARENT, 0, (int32_t)(uintptr_t)GetParent(hwnd));
   try_activate_target(hwnd, req_id);
 

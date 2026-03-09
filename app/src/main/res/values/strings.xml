@@ -148,6 +148,7 @@
     <string name="target_path">Target Path</string>
     <string name="xserver">XServer</string>
     <string name="use_dri3_extension">Use DRI3 extension</string>
+    <string name="ime_overlay_keyboard">Overlay keyboard on game view (don\'t push screen)</string>
     <string name="width">Width</string>
     <string name="height">Height</string>
     <string name="old">old</string>
