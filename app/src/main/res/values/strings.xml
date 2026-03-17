@@ -221,6 +221,7 @@
     <string name="bring_to_front">Bring to Front</string>
     <string name="options">Options</string>
     <string name="enable_experimental_wow64_mode">Enable experimental WoW64 mode</string>
+    <string name="icp_tap_drag_mouse_gesture">Enable ICP tap/drag mouse gesture</string>
     <string name="logs">Logs</string>
     <string name="enable_wine_debug">Enable Wine debug</string>
     <string name="enable_box86_64_logs">Enable Box86/Box64 logs</string>

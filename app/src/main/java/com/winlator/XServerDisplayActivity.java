@@ -818,6 +818,9 @@ import java.util.concurrent.Executors;
         globalCursorSpeed = preferences.getFloat("cursor_speed", 1.0f);
         touchpadView = new TouchpadView(this, xServer);
         touchpadView.setSensitivity(globalCursorSpeed);
+        boolean icpTapDragMouseGestureEnabled = container != null &&
+                "1".equals(container.getExtra(Container.EXTRA_ICP_TAP_DRAG_MOUSE_GESTURE, "0"));
+        touchpadView.setTapDragMouseModeEnabled(icpTapDragMouseGestureEnabled);
         touchpadView.setFourFingersTapCallback(() -> {
             if (!drawerLayout.isDrawerOpen(GravityCompat.START)) drawerLayout.openDrawer(GravityCompat.START);
         });
@@ -1087,6 +1090,9 @@ import java.util.concurrent.Executors;
         final CheckBox cbShowTouchscreenControls = dialog.findViewById(R.id.CBShowTouchscreenControls);
         cbShowTouchscreenControls.setChecked(inputControlsView.isShowTouchscreenControls());
 
+        final CheckBox cbIcpTapDragMouseGestureRuntime = dialog.findViewById(R.id.CBIcpTapDragMouseGestureRuntime);
+        cbIcpTapDragMouseGestureRuntime.setChecked(touchpadView.isTapDragMouseModeEnabled());
+
         dialog.findViewById(R.id.BTSettings).setOnClickListener((v) -> {
             int position = sProfile.getSelectedItemPosition();
             Intent intent = new Intent(this, MainActivity.class);
@@ -1103,6 +1109,12 @@ import java.util.concurrent.Executors;
         dialog.setOnConfirmCallback(() -> {
             xServer.setRelativeMouseMovement(cbRelativeMouseMovement.isChecked());
             inputControlsView.setShowTouchscreenControls(cbShowTouchscreenControls.isChecked());
+            boolean tapDragGestureEnabled = cbIcpTapDragMouseGestureRuntime.isChecked();
+            touchpadView.setTapDragMouseModeEnabled(tapDragGestureEnabled);
+            if (container != null) {
+                container.putExtra(Container.EXTRA_ICP_TAP_DRAG_MOUSE_GESTURE, tapDragGestureEnabled ? "1" : "0");
+                container.saveData();
+            }
             int position = sProfile.getSelectedItemPosition();
             if (position > 0) {
                 showInputControls(inputControlsManager.getProfiles().get(position - 1));

@@ -39,6 +39,7 @@ public class Container {
     public static final byte STARTUP_SELECTION_ESSENTIAL = 1;
     public static final byte STARTUP_SELECTION_AGGRESSIVE = 2;
     public static final byte MAX_DRIVE_LETTERS = 8;
+    public static final String EXTRA_ICP_TAP_DRAG_MOUSE_GESTURE = "icpTapDragMouseGesture";
     // Mirror vanilla's default wrapper driver config as a baseline for new containers.
     public static final String DEFAULT_GRAPHICS_DRIVER_CONFIG =
             "gpuName=Device;" +

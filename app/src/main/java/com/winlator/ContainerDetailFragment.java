@@ -148,6 +148,8 @@ public class ContainerDetailFragment extends Fragment {
 
         final CheckBox cbWoW64Mode = view.findViewById(R.id.CBWoW64Mode);
         cbWoW64Mode.setChecked(!isEditMode() || container.isWoW64Mode());
+        final CheckBox cbIcpTapDragMouseGesture = view.findViewById(R.id.CBIcpTapDragMouseGesture);
+        cbIcpTapDragMouseGesture.setChecked(isEditMode() && "1".equals(container.getExtra(Container.EXTRA_ICP_TAP_DRAG_MOUSE_GESTURE, "0")));
 
         final Spinner sStartupSelection = view.findViewById(R.id.SStartupSelection);
         byte previousStartupSelection = isEditMode() ? container.getStartupSelection() : -1;
@@ -187,6 +189,7 @@ public class ContainerDetailFragment extends Fragment {
                 String cpuList = cpuListView.getCheckedCPUListAsString();
                 String cpuListWoW64 = cpuListViewWoW64.getCheckedCPUListAsString();
                 boolean wow64Mode = cbWoW64Mode.isChecked() && cbWoW64Mode.isEnabled();
+                boolean icpTapDragMouseGesture = cbIcpTapDragMouseGesture.isChecked();
                 byte startupSelection = (byte)sStartupSelection.getSelectedItemPosition();
                 String fexcoreVersion = StringUtils.parseIdentifier(sFEXCoreVersion.getSelectedItem());
                 String fexcorePreset = FEXCorePresetManager.getSpinnerSelectedId(sFEXCorePreset);
@@ -210,6 +213,7 @@ public class ContainerDetailFragment extends Fragment {
                     container.setFEXCoreVersion(fexcoreVersion);
                     container.setFEXCorePreset(fexcorePreset);
                     container.setDesktopTheme(desktopTheme);
+                    container.putExtra(Container.EXTRA_ICP_TAP_DRAG_MOUSE_GESTURE, icpTapDragMouseGesture ? "1" : "0");
                     container.saveData();
                     saveWineRegistryKeys(view);
                     getActivity().onBackPressed();
@@ -233,6 +237,11 @@ public class ContainerDetailFragment extends Fragment {
                     data.put("fexcoreVersion", fexcoreVersion);
                     data.put("fexcorePreset", fexcorePreset);
                     data.put("desktopTheme", desktopTheme);
+
+                    JSONObject extraData = data.optJSONObject("extraData");
+                    if (extraData == null) extraData = new JSONObject();
+                    extraData.put(Container.EXTRA_ICP_TAP_DRAG_MOUSE_GESTURE, icpTapDragMouseGesture ? "1" : "0");
+                    data.put("extraData", extraData);
 
                     // Always persist the selected Wine version when creating a container.
                     // WineUtils.getInstalledWineInfos() returns only arm64ec entries unless none exist,

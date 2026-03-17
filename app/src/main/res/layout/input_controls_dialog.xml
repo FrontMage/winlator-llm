@@ -38,4 +38,10 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="@string/relative_mouse_movement" />
+
+    <CheckBox
+        android:id="@+id/CBIcpTapDragMouseGestureRuntime"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/icp_tap_drag_mouse_gesture" />
 </LinearLayout>

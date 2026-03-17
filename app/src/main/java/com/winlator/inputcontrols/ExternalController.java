@@ -27,6 +27,8 @@ public class ExternalController {
     public static final byte IDX_BUTTON_R3 = 9;
     public static final byte IDX_BUTTON_L2 = 10;
     public static final byte IDX_BUTTON_R2 = 11;
+    public static final byte IDX_BUTTON_C = 12;
+    public static final byte IDX_BUTTON_Z = 13;
     private String name;
     private String id;
     private int deviceId = -1;
@@ -276,11 +278,10 @@ public class ExternalController {
                 return IDX_BUTTON_L3;
             case KeyEvent.KEYCODE_BUTTON_THUMBR:
                 return IDX_BUTTON_R3;
-            // RP6 back keys: map to default clickable sticks for pass-through mode.
             case KeyEvent.KEYCODE_BUTTON_C:
-                return IDX_BUTTON_L3;
+                return IDX_BUTTON_C;
             case KeyEvent.KEYCODE_BUTTON_Z:
-                return IDX_BUTTON_R3;
+                return IDX_BUTTON_Z;
             case KeyEvent.KEYCODE_BUTTON_L2:
                 return IDX_BUTTON_L2;
             case KeyEvent.KEYCODE_BUTTON_R2:
@@ -316,6 +317,10 @@ public class ExternalController {
                 return IDX_BUTTON_L2;
             case "R2":
                 return IDX_BUTTON_R2;
+            case "C":
+                return IDX_BUTTON_C;
+            case "Z":
+                return IDX_BUTTON_Z;
             default:
                 return -1;
         }

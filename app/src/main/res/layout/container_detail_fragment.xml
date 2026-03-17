@@ -532,6 +532,13 @@
                             android:layout_height="wrap_content"
                             android:text="@string/enable_experimental_wow64_mode"
                             android:layout_marginTop="8dp" />
+
+                        <CheckBox
+                            android:id="@+id/CBIcpTapDragMouseGesture"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/icp_tap_drag_mouse_gesture"
+                            android:layout_marginTop="8dp" />
                     </LinearLayout>
 
                     <TextView
