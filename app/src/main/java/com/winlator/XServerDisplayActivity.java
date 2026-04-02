@@ -329,6 +329,7 @@ import java.util.concurrent.Executors;
     @Override
     public void onResume() {
         super.onResume();
+        if (frameRating != null) frameRating.startMonitoring();
         if (environment != null) {
             xServerView.onResume();
             environment.onResume();
@@ -338,6 +339,7 @@ import java.util.concurrent.Executors;
     @Override
     public void onPause() {
         super.onPause();
+        if (frameRating != null) frameRating.stopMonitoring();
         if (environment != null) {
             environment.onPause();
             xServerView.onPause();
@@ -690,6 +692,12 @@ import java.util.concurrent.Executors;
 
             envVars.putAll(container.getEnvVars());
             if (shortcut != null) envVars.putAll(shortcut.getExtra("envVars"));
+            if (container.isShowFPS()) {
+                envVars.put("DXVK_HUD", "0");
+                envVars.put("MANGOHUD", "0");
+                envVars.remove("MANGOHUD_CONFIG");
+                envVars.remove("MANGOHUD_CONFIGFILE");
+            }
             if (!envVars.has("WINEESYNC")) envVars.put("WINEESYNC", "1");
 
             // Apply Settings-controlled WINEDEBUG after merging env vars, but allow per-container/per-shortcut
@@ -835,11 +843,21 @@ import java.util.concurrent.Executors;
 
         if (container != null && container.isShowFPS()) {
             frameRating = new FrameRating(this);
+            FrameLayout.LayoutParams hudLayoutParams = new FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT
+            );
+            hudLayoutParams.gravity = Gravity.TOP | Gravity.START;
+            hudLayoutParams.leftMargin = Math.round(getResources().getDisplayMetrics().density * 12.0f);
+            hudLayoutParams.topMargin = Math.round(getResources().getDisplayMetrics().density * 12.0f);
+            frameRating.setLayoutParams(hudLayoutParams);
+            frameRating.setEngineLabel(resolveHudEngineLabel());
             frameRating.setVisibility(View.GONE);
             rootView.addView(frameRating);
             // Measure actual host render FPS (not X11 content updates), otherwise Vulkan/WSI apps can
             // report misleadingly low or spiky values depending on which window gets tracked.
             renderer.setOnFrameRendered(frameRating::update);
+            frameRating.startMonitoring();
         }
 
         if (shortcut != null) {
@@ -1314,6 +1332,37 @@ import java.util.concurrent.Executors;
             String v = map.get(key);
             return v != null ? v : fallback;
         }
+    }
+
+    private String resolveHudEngineLabel() {
+        String renderBackend;
+        if (dxwrapper == null || dxwrapper.isEmpty() || "wined3d".equals(dxwrapper)) {
+            renderBackend = "WINED3D";
+        }
+        else if ("vkd3d".equals(dxwrapper)) {
+            renderBackend = "VKD3D";
+        }
+        else if (dxwrapper.startsWith("dxvk")) {
+            renderBackend = dxwrapper.contains("vkd3d") ? "DXVK/VKD3D" : "DXVK";
+        }
+        else {
+            renderBackend = dxwrapper.toUpperCase();
+        }
+
+        String driverLabel;
+        if ("wrapper".equals(graphicsDriver)) {
+            ParsedConfig cfg = ParsedConfig.parseSemicolonList(graphicsDriverConfig);
+            String version = cfg.get("version", "");
+            driverLabel = version.toLowerCase().contains("turnip") ? "TURNIP" : "WRAPPER";
+        }
+        else if ("virgl".equals(graphicsDriver)) {
+            driverLabel = "VIRGL";
+        }
+        else {
+            driverLabel = graphicsDriver != null ? graphicsDriver.toUpperCase() : "";
+        }
+
+        return driverLabel.isEmpty() ? renderBackend : renderBackend + " / " + driverLabel;
     }
 
     private void ensureTurnipIcdJson(File rootDir) {

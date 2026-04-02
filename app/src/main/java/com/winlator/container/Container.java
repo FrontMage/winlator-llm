@@ -17,6 +17,7 @@ import java.io.File;
 import java.util.Iterator;
 
 public class Container {
+    public static final String LEGACY_DEFAULT_DXVK_HUD = "devinfo,fps,frametimes,gpuload,version,api";
     // Vanilla-aligned defaults: keep envVars minimal and let graphicsDriverConfig drive wrapper/adrenotools.
     public static final String DEFAULT_ENV_VARS =
             "WRAPPER_MAX_IMAGE_COUNT=0 " +
@@ -24,7 +25,8 @@ public class Container {
             "MESA_SHADER_CACHE_DISABLE=false MESA_SHADER_CACHE_MAX_SIZE=512MB mesa_glthread=true " +
             "WINEESYNC=1 " +
             "TU_DEBUG=sysmem,noconform " +
-            "DXVK_HUD=devinfo,fps,frametimes,gpuload,version,api";
+            "DXVK_HUD=0 " +
+            "MANGOHUD=0";
     public static final String DEFAULT_SCREEN_SIZE = "1280x720";
     public static final String DEFAULT_GRAPHICS_DRIVER = "wrapper";
     public static final String DEFAULT_AUDIO_DRIVER = "alsa";
@@ -462,6 +464,8 @@ public class Container {
                 }
             }
 
+            migrateDefaultHudEnvVars(data);
+
             KeyValueSet wincomponents1 = new KeyValueSet(DEFAULT_WINCOMPONENTS);
             KeyValueSet wincomponents2 = new KeyValueSet(data.getString("wincomponents"));
             String result = "";
@@ -482,6 +486,26 @@ public class Container {
             data.put("wincomponents", result);
         }
         catch (JSONException e) {}
+    }
+
+    private static void migrateDefaultHudEnvVars(JSONObject data) throws JSONException {
+        if (!data.has("envVars")) return;
+
+        EnvVars envVars = new EnvVars(data.getString("envVars"));
+        boolean hasDxvkHud = envVars.has("DXVK_HUD");
+        boolean hasMangoHud = envVars.has("MANGOHUD");
+        boolean usesLegacyDefaultDxvkHud = LEGACY_DEFAULT_DXVK_HUD.equals(envVars.get("DXVK_HUD"));
+        boolean shouldNormalizeHudDefaults = !hasMangoHud && (!hasDxvkHud || usesLegacyDefaultDxvkHud);
+
+        if (shouldNormalizeHudDefaults) {
+            envVars.put("DXVK_HUD", "0");
+            envVars.put("MANGOHUD", "0");
+        }
+        else if ("1".equals(envVars.get("MANGOHUD")) && usesLegacyDefaultDxvkHud) {
+            envVars.put("DXVK_HUD", "0");
+        }
+
+        data.put("envVars", envVars.toString());
     }
 
     public static String getFallbackCPUList() {
