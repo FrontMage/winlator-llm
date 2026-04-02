@@ -65,6 +65,7 @@ public class FrameRating extends View implements Runnable {
     private float powerWatts = Float.NaN;
     private String powerText = "--";
     private String engineLabel = "DXVK";
+    private boolean dragHighlighted = false;
 
     public FrameRating(Context context) {
         this(context, null);
@@ -147,6 +148,13 @@ public class FrameRating extends View implements Runnable {
         String value = engineLabel != null && !engineLabel.trim().isEmpty() ? engineLabel.trim() : "DXVK";
         if (!value.equals(this.engineLabel)) {
             this.engineLabel = value;
+            postInvalidateOnAnimation();
+        }
+    }
+
+    public void setDragHighlighted(boolean dragHighlighted) {
+        if (this.dragHighlighted != dragHighlighted) {
+            this.dragHighlighted = dragHighlighted;
             postInvalidateOnAnimation();
         }
     }
@@ -343,6 +351,7 @@ public class FrameRating extends View implements Runnable {
         float height = getHeight();
         float corner = dp(4.0f);
         tempRect.set(0.0f, 0.0f, width, height);
+        backgroundPaint.setColor(dragHighlighted ? Color.argb(220, 0, 0, 0) : Color.argb(190, 0, 0, 0));
         canvas.drawRoundRect(tempRect, corner, corner, backgroundPaint);
 
         Paint.FontMetrics valueMetrics = valuePaint.getFontMetrics();

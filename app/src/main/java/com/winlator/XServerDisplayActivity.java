@@ -64,6 +64,7 @@ import com.winlator.inputcontrols.InputControlsManager;
 import com.winlator.math.Mathf;
 import com.winlator.renderer.GLRenderer;
 import com.winlator.widget.FrameRating;
+import com.winlator.widget.HUDLayer;
 import com.winlator.widget.ImeBridgeEditText;
 import com.winlator.widget.InputControlsView;
 import com.winlator.widget.MagnifierView;
@@ -114,6 +115,7 @@ import java.util.concurrent.Executors;
     private XServer xServer;
     private InputControlsManager inputControlsManager;
     private ImageFs imageFs;
+    private HUDLayer hudLayer;
     private FrameRating frameRating;
     private Runnable editInputControlsCallback;
     private Shortcut shortcut;
@@ -134,7 +136,6 @@ import java.util.concurrent.Executors;
     private DebugDialog debugDialog;
     private short taskAffinityMask = 0;
     private short taskAffinityMaskWoW64 = 0;
-    private int frameRatingWindowId = -1;
     private SessionLogWriter sessionLogWriter;
     private boolean shutdownCompleted = false;
     private boolean restartRequested = false;
@@ -274,7 +275,6 @@ import java.util.concurrent.Executors;
 
             @Override
             public void onModifyWindowProperty(Window window, Property property) {
-                changeFrameRatingVisibility(window, property);
             }
 
             @Override
@@ -299,7 +299,6 @@ import java.util.concurrent.Executors;
 
             @Override
             public void onUnmapWindow(Window window) {
-                changeFrameRatingVisibility(window, null);
             }
         });
 
@@ -842,18 +841,16 @@ import java.util.concurrent.Executors;
         rootView.addView(inputControlsView);
 
         if (container != null && container.isShowFPS()) {
-            frameRating = new FrameRating(this);
+            hudLayer = new HUDLayer(this);
+            frameRating = hudLayer.getFrameRating();
             FrameLayout.LayoutParams hudLayoutParams = new FrameLayout.LayoutParams(
                     FrameLayout.LayoutParams.WRAP_CONTENT,
                     FrameLayout.LayoutParams.WRAP_CONTENT
             );
-            hudLayoutParams.gravity = Gravity.TOP | Gravity.START;
-            hudLayoutParams.leftMargin = Math.round(getResources().getDisplayMetrics().density * 12.0f);
-            hudLayoutParams.topMargin = Math.round(getResources().getDisplayMetrics().density * 12.0f);
-            frameRating.setLayoutParams(hudLayoutParams);
+            hudLayer.setLayoutParams(hudLayoutParams);
             frameRating.setEngineLabel(resolveHudEngineLabel());
-            frameRating.setVisibility(View.GONE);
-            rootView.addView(frameRating);
+            rootView.addView(hudLayer);
+            hudLayer.show();
             // Measure actual host render FPS (not X11 content updates), otherwise Vulkan/WSI apps can
             // report misleadingly low or spiky values depending on which window gets tracked.
             renderer.setOnFrameRendered(frameRating::update);
@@ -1800,18 +1797,4 @@ import java.util.concurrent.Executors;
         }
     }
 
-    private void changeFrameRatingVisibility(Window window, Property property) {
-        if (frameRating == null) return;
-        if (property != null) {
-            // Atom.getName() can return null for unknown atoms. Avoid NPEs when apps set custom properties.
-            String propertyName = property.nameAsString();
-            if (frameRatingWindowId == -1 && window.attributes.isMapped() && "_MESA_DRV".equals(propertyName)) {
-                frameRatingWindowId = window.id;
-            }
-        }
-        else if (window.id == frameRatingWindowId) {
-            frameRatingWindowId = -1;
-            runOnUiThread(() -> frameRating.setVisibility(View.GONE));
-        }
-    }
 }
